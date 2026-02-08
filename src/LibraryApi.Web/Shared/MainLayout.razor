@@ -1,0 +1,69 @@
+@namespace LibraryApi.Web
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Library App</PageTitle>
+
+<div class="page">
+    <AuthorizeView>
+        <Authorized>
+            <nav class="navbar navbar-expand-lg py-3 mb-4 rounded-3" style="background: linear-gradient(135deg, #b3d9ff 0%, #cce5ff 100%); box-shadow: var(--lib-shadow);">
+                <div class="container-fluid">
+                    <span class="navbar-brand mb-0 fw-semibold fs-5 d-flex align-items-center text-dark">
+                        <i class="bi bi-journal-bookmark-fill me-2"></i> Library App
+                    </span>
+                    <div class="d-flex align-items-center ms-auto">
+                        <i class="bi bi-person-circle fs-4 text-secondary me-2"></i>
+                        <span class="me-3 text-dark small">@context.User.Identity?.Name</span>
+                        <button class="btn btn-outline-dark btn-sm rounded-pill px-3" @onclick="HandleLogout" disabled="@isLoggingOut">
+                            @if (isLoggingOut)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            }
+                            <i class="bi bi-box-arrow-right me-1"></i> Log Out
+                        </button>
+                    </div>
+                </div>
+            </nav>
+        </Authorized>
+    </AuthorizeView>
+    <main>
+        <article class="content px-4 pb-5" style="max-width: 1400px; margin: 0 auto;">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    private bool isLoggingOut = false;
+
+    private async Task HandleLogout()
+    {
+        if (isLoggingOut)
+            return;
+
+        isLoggingOut = true;
+
+        try
+        {
+            // Use JavaScript to make the logout request from the browser
+            // This ensures cookies are cleared in the browser's cookie jar
+            var result = await JSRuntime.InvokeAsync<string>("logoutUser");
+
+            // Always redirect to login page with forceLoad to ensure a full page reload
+            // This clears any cached authentication state and establishes a new SignalR connection
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            // Even if there's an error, redirect to login
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        // Note: isLoggingOut doesn't need to be reset since we're doing a full page reload
+    }
+}
+
+

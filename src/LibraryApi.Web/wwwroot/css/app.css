@@ -1,0 +1,179 @@
+:root {
+    --lib-primary: #a1c1e2 /*3b50ca8*/;
+    --lib-primary-hover: #add8e6;
+    --lib-secondary: #add8e6;
+    --lib-success: #add8e6;
+    --lib-danger: #ef4444;
+    --lib-warning: #f59e0b;
+    --lib-surface: #f8fafc;
+    --lib-border: #e2e8f0;
+    --lib-shadow: 0 1px 3px 1b6ec2(0, 0, 0, 0.08);
+    --lib-shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+html, body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+#blazor-error-ui {
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+    #blazor-error-ui .dismiss {
+        cursor: pointer;
+        position: absolute;
+        right: 0.75rem;
+        top: 0.5rem;
+    }
+
+.loading-progress {
+    position: relative;
+    display: block;
+    width: 8rem;
+    height: 8rem;
+    margin: 20vh auto 1rem auto;
+}
+
+    .loading-progress circle {
+        fill: none;
+        stroke: #e0e0e0;
+        stroke-width: 0.6rem;
+        transform-origin: 50% 50%;
+        transform: rotate(-90deg);
+    }
+
+        .loading-progress circle:last-child {
+            stroke: #a1c1e2 /*1b6ec2*/;
+            stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
+            animation: loading-progress 1s ease-in-out infinite;
+        }
+
+.loading-progress-text {
+    position: absolute;
+    text-align: center;
+    font-weight: bold;
+    inset: calc(20vh + 3.25rem) 0 auto 0.2rem;
+}
+
+    .loading-progress-text:after {
+        content: var(--blazor-load-percentage-text, "Loading");
+    }
+
+@keyframes loading-progress {
+    0% {
+        stroke-dasharray: 0% 500%;
+    }
+}
+
+#blazor-error-ui .dismiss:hover {
+    background: rgba(255, 0, 0, 0.2);
+}
+
+/* Light blue table headers - all library tables */
+.table thead th {
+    background-color: #bedeff /*#add8e6*/;
+    color: #333;
+    border-color: #9ec9d4;
+}
+
+/* Global blue buttons - override Bootstrap.
+   Blue styling for: (1) Add New Book .btn-success, (2) Loan History "Active" .badge.bg-primary, (3) Log Out .navbar .btn-outline-dark when highlighted. */
+.btn-primary,
+.btn-success {
+    background-color: var(--lib-primary) !important;
+    border-color: var(--lib-primary) !important;
+    color: #fff !important;
+}
+.btn-primary:hover,
+.btn-success:hover {
+    background-color: var(--lib-primary-hover) !important;
+    border-color: var(--lib-primary-hover) !important;
+    color: #fff !important;
+}
+.btn-outline-secondary,
+.btn-outline-dark {
+    color: var(--lib-primary) !important;
+    border-color: var(--lib-primary) !important;
+}
+.btn-outline-secondary:hover,
+.btn-outline-dark:hover,
+.btn-outline-dark:focus,
+.btn-outline-dark:active,
+.btn-outline-dark:focus-visible {
+    background-color: var(--lib-primary) !important;
+    border-color: var(--lib-primary) !important;
+    color: #fff !important;
+}
+.btn-primary:focus,
+.btn-primary:active,
+.btn-primary:focus-visible,
+.btn-success:focus,
+.btn-success:active,
+.btn-success:focus-visible {
+    background-color: var(--lib-primary-hover) !important;
+    border-color: var(--lib-primary-hover) !important;
+    color: #fff !important;
+}
+/* Add New Book - higher specificity so blue always wins */
+button.btn.btn-success {
+    background-color: var(--lib-primary) !important;
+    border-color: var(--lib-primary) !important;
+    color: #fff !important;
+}
+button.btn.btn-success:hover,
+button.btn.btn-success:focus,
+button.btn.btn-success:active,
+button.btn.btn-success:focus-visible {
+    background-color: var(--lib-primary-hover) !important;
+    border-color: var(--lib-primary-hover) !important;
+    color: #fff !important;
+}
+/* Log Out button in navbar - blue when highlighted */
+.navbar .btn-outline-dark,
+.navbar .btn-outline-dark:hover,
+.navbar .btn-outline-dark:focus,
+.navbar .btn-outline-dark:active,
+.navbar .btn-outline-dark:focus-visible {
+    color: var(--lib-primary) !important;
+    border-color: var(--lib-primary) !important;
+}
+.navbar .btn-outline-dark:hover,
+.navbar .btn-outline-dark:focus,
+.navbar .btn-outline-dark:active,
+.navbar .btn-outline-dark:focus-visible {
+    background-color: var(--lib-primary) !important;
+    color: #fff !important;
+}
+/* Log Out - higher specificity so blue always wins on hover/focus */
+nav.navbar button.btn-outline-dark {
+    color: var(--lib-primary) !important;
+    border-color: var(--lib-primary) !important;
+}
+nav.navbar button.btn-outline-dark:hover,
+nav.navbar button.btn-outline-dark:focus,
+nav.navbar button.btn-outline-dark:active,
+nav.navbar button.btn-outline-dark:focus-visible {
+    background-color: var(--lib-primary) !important;
+    border-color: var(--lib-primary) !important;
+    color: #fff !important;
+}
+/* Loan History table "Active" badge */
+.badge.bg-primary {
+    background-color: var(--lib-primary) !important;
+    color: #fff !important;
+}
+.nav-tabs .nav-link.active,
+.nav-link.active.bg-primary {
+    background-color: var(--lib-primary) !important;
+    border-color: var(--lib-primary) !important;
+    color: #fff !important;
+}
+

@@ -1,0 +1,197 @@
+@page "/"
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using LibraryApi.Application.Catalog.Dtos
+@using LibraryApi.Application.Common.Dtos
+@using System.Text.Json
+@attribute [AllowAnonymous]
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+@layout MainLayout
+
+<PageTitle>Library - Welcome</PageTitle>
+
+<div class="container-fluid px-0">
+    <nav class="navbar navbar-expand-lg py-3 mb-4 rounded-3" style="background: linear-gradient(135deg, #b3d9ff 0%, #cce5ff 100%); box-shadow: var(--lib-shadow);">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 fw-semibold fs-5 d-flex align-items-center text-dark">
+                <i class="bi bi-journal-bookmark-fill me-2"></i> Library App
+            </span>
+            <div class="d-flex align-items-center gap-3">
+                <input type="text" class="form-control form-control-sm" style="max-width: 140px;" placeholder="Username" @bind="loginUsername" />
+                <input type="password" class="form-control form-control-sm" style="max-width: 140px;" placeholder="Password" @bind="loginPassword" />
+                <button class="btn btn-primary btn-sm rounded-pill px-3" @onclick="HandleLogin" disabled="@isLoggingIn">
+                    @if (isLoggingIn) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Login
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    @if (!string.IsNullOrEmpty(loginErrorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show mb-3" role="alert">
+            @loginErrorMessage
+            <button type="button" class="btn-close" @onclick='() => loginErrorMessage = ""' aria-label="Close"></button>
+        </div>
+    }
+
+    <p class="text-muted mb-4">To use full library functionality please login to your account.</p>
+
+    <div class="card border-0 shadow-sm rounded-3 mb-4">
+        <div class="card-body p-4">
+            <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label small text-muted fw-medium">Search books</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0 rounded-start-3"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" class="form-control border-start-0 rounded-end-3" placeholder="Search by name, author or ISBN (comma-separated for multiple terms)..." @bind="searchFilter" @oninput="OnFilterInput" />
+                    </div>
+                    <small class="text-muted">e.g. rowling, harry potter, 978</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center my-5 py-5">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+            <p class="mt-3 text-muted">Loading books...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(loadErrorMessage))
+    {
+        <div class="alert alert-danger">@loadErrorMessage</div>
+    }
+    else if (publicBooks?.Items != null && publicBooks.Items.Count > 0)
+    {
+        <div class="table-responsive rounded-3 border overflow-hidden shadow-sm">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="py-3 px-4">Name</th>
+                        <th class="py-3 px-4">Author</th>
+                        <th class="py-3 px-4">ISBN</th>
+                        <th class="py-3 px-4">Available to borrow</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    @foreach (var book in publicBooks.Items)
+                    {
+                        <tr class="border-bottom">
+                            <td class="px-4 py-3">@book.Name</td>
+                            <td class="px-4 py-3">@book.Author</td>
+                            <td class="px-4 py-3">@FormatIsbn(book.ISBN)</td>
+                            <td class="px-4 py-3">@book.AvailableCount</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small mt-3">Showing @publicBooks.Items.Count of @publicBooks.TotalCount books. Page @publicBooks.PageNumber.</p>
+    }
+    else
+    {
+        <div class="alert alert-info">No books found. Try adjusting the filters.</div>
+    }
+</div>
+
+@code {
+    private string loginUsername = "";
+    private string loginPassword = "";
+    private string loginErrorMessage = "";
+    private bool isLoggingIn = false;
+
+    private string searchFilter = "";
+    private PagedResult<PublicBookDto>? publicBooks;
+    private bool isLoading = false;
+    private string? loadErrorMessage;
+    private System.Threading.Timer? filterDebounce;
+    private const int PageSize = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User?.Identity?.IsAuthenticated == true)
+        {
+            Navigation.NavigateTo("/library", replace: true);
+            return;
+        }
+        await LoadPublicBooks();
+    }
+
+    private async Task HandleLogin()
+    {
+        if (string.IsNullOrWhiteSpace(loginUsername) || string.IsNullOrWhiteSpace(loginPassword))
+        {
+            loginErrorMessage = "Please enter both username and password.";
+            return;
+        }
+        isLoggingIn = true;
+        loginErrorMessage = "";
+        try
+        {
+            var loginData = JsonSerializer.Serialize(new { Login = loginUsername, Password = loginPassword });
+            var result = await JSRuntime.InvokeAsync<string>("loginUser", loginData);
+            if (result == "success")
+                Navigation.NavigateTo("/library", forceLoad: true);
+            else
+                loginErrorMessage = result ?? "Invalid credentials.";
+        }
+        catch (Exception ex)
+        {
+            loginErrorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoggingIn = false;
+        }
+    }
+
+    private void OnFilterInput()
+    {
+        filterDebounce?.Dispose();
+        filterDebounce = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadPublicBooks();
+                StateHasChanged();
+            });
+        }, null, 400, System.Threading.Timeout.Infinite);
+    }
+
+    private async Task LoadPublicBooks()
+    {
+        isLoading = true;
+        loadErrorMessage = null;
+        try
+        {
+            var query = $"?pageNumber=1&pageSize={PageSize}";
+            if (!string.IsNullOrWhiteSpace(searchFilter)) query += "&search=" + Uri.EscapeDataString(searchFilter);
+            var response = await Http.GetAsync("/api/catalog/public" + query);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+            publicBooks = JsonSerializer.Deserialize<PagedResult<PublicBookDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex)
+        {
+            loadErrorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static string FormatIsbn(string? isbn)
+    {
+        if (string.IsNullOrWhiteSpace(isbn)) return "";
+        var digits = new string(isbn.Where(char.IsDigit).ToArray());
+        if (digits.Length != 13) return isbn;
+        return $"{digits.Substring(0, 3)}-{digits.Substring(3, 1)}-{digits.Substring(4, 3)}-{digits.Substring(7, 5)}-{digits.Substring(12, 1)}";
+    }
+}

@@ -1,0 +1,1741 @@
+@page "/library"
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Security.Claims
+@using Microsoft.AspNetCore.WebUtilities
+@using LibraryApi.Application.Admin
+@using LibraryApi.Application.Catalog
+@using LibraryApi.Application.Catalog.Dtos
+@using LibraryApi.Application.Catalog.Services
+@using LibraryApi.Application.Common.Dtos
+@using System.Text.Json
+@attribute [Authorize]
+
+<PageTitle>Library</PageTitle>
+
+@if (isAdmin)
+{
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <button type="button" class="nav-link @(activeTab == "accounts" ? "active" : "")" @onclick='() => SwitchTab("accounts")'>Account Management</button>
+        </li>
+        <li class="nav-item">
+            <button type="button" class="nav-link @(activeTab == "books" ? "active" : "")" @onclick='() => SwitchTab("books")'>Books Management</button>
+        </li>
+    </ul>
+}
+
+@if (!isAdmin)
+{
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <button type="button" class="nav-link @(userLibraryTab == "library" ? "active" : "")" @onclick='() => SwitchUserTab("library")'>Library Books</button>
+    </li>
+    <li class="nav-item">
+        <button type="button" class="nav-link @(userLibraryTab == "history" ? "active" : "")" @onclick='() => SwitchUserTab("history")'>My History</button>
+    </li>
+</ul>
+
+@if (userLibraryTab == "library")
+{
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="h3 fw-semibold mb-1" style="color: #1e293b;">Library</h1>
+        <p class="text-muted small mb-0">Browse and manage your book collection</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-success rounded-pill px-4 shadow-sm" @onclick="ShowAddBookModal">
+            <i class="bi bi-plus-circle me-2"></i> Add New Book
+        </button>
+    </div>
+</div>
+}
+
+@if (userLibraryTab == "library")
+{
+<div class="card border-0 shadow-sm rounded-3 mb-4">
+    <div class="card-body p-4">
+        <div class="row g-3">
+            <div class="col-12">
+                <label for="searchFilter" class="form-label small text-muted fw-medium">Search books</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-light border-end-0 rounded-start-3"><i class="bi bi-search text-muted"></i></span>
+                    <input type="text" 
+                           class="form-control border-start-0 rounded-end-3" 
+                           id="searchFilter" 
+                           value="@searchFilter" 
+                           @oninput="HandleSearchFilterInput" 
+                           placeholder="Search by name, author or ISBN (comma-separated for multiple terms)..." 
+                           autocomplete="off" />
+                </div>
+                <small class="text-muted">e.g. rowling, harry potter, 978</small>
+            </div>
+            <div class="col-12">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="onlyAvailableFilter" checked="@onlyAvailableFilter" @onchange="HandleOnlyAvailableFilterChange" />
+                    <label class="form-check-label small text-muted" for="onlyAvailableFilter">Show only available to borrow</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <div class="text-center my-5 py-5">
+        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-3 text-muted">Loading books...</p>
+    </div>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger border-0 rounded-3 shadow-sm d-flex align-items-center" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-3 fs-5"></i>
+        <div>
+            <strong>Error:</strong> @errorMessage
+        </div>
+    </div>
+}
+else if (booksResponse?.Items != null && booksResponse.Items.Count > 0)
+{
+    <div class="table-responsive rounded-3 border overflow-hidden shadow-sm">
+        <table class="table table-hover align-middle mb-0">
+            <thead style="background: #f8fafc;">
+                <tr>
+                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                        <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleSortBy("Name")'>
+                            Name
+                            @if (sortBy == "Name")
+                            {
+                                <i class="bi @(sortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i>
+                            }
+                            else
+                            {
+                                <i class="bi bi-sort-down-alt opacity-50"></i>
+                            }
+                        </button>
+                    </th>
+                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                        <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleSortBy("Author")'>
+                            Author
+                            @if (sortBy == "Author")
+                            {
+                                <i class="bi @(sortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i>
+                            }
+                            else
+                            {
+                                <i class="bi bi-sort-down-alt opacity-50"></i>
+                            }
+                        </button>
+                    </th>
+                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">Issue Year</th>
+                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">ISBN</th>
+                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">Number of Pieces</th>
+                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">Available to borrow</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white">
+                @foreach (var (book, index) in booksResponse.Items.Select((b, i) => (b, i)))
+                {
+                    <tr class="border-bottom" style="@(index % 2 == 0 ? "background-color: #e8f4fc !important;" : "")">
+                        <td class="px-4 py-3">@book.Name</td>
+                        <td class="px-4 py-3">@book.Author</td>
+                        <td class="px-4 py-3">@book.IssueYear</td>
+                        <td class="px-4 py-3">@FormatIsbn(book.ISBN)</td>
+                        <td class="px-4 py-3">@book.NumberOfPieces</td>
+                        <td class="px-4 py-3">
+                            @GetAvailableCount(book.Id)
+                            @if (IsBookBorrowedByUser(book.Id))
+                            {
+                                <button class="btn btn-primary btn-sm rounded-pill ms-2" 
+                                        @onclick="() => HandleReturnBook(book.Id)" 
+                                        disabled="@(isProcessingReturn && processingBookId == book.Id)">
+                                    @if (isProcessingReturn && processingBookId == book.Id)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-check-circle-fill me-1"></i>
+                                    }
+                                    Return
+                                </button>
+                            }
+                            else if (CanBorrowBook(book.Id))
+                            {
+                                <button class="btn btn-primary btn-sm rounded-pill ms-2" 
+                                        @onclick="() => HandleBorrowBook(book.Id)" 
+                                        disabled="@(isProcessingBorrow && processingBookId == book.Id)">
+                                    @if (isProcessingBorrow && processingBookId == book.Id)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-book me-1"></i>
+                                    }
+                                    Borrow
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <nav class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-3">
+        <span class="text-muted small">
+            Showing @((booksResponse.PageNumber - 1) * booksResponse.PageSize + 1) to 
+            @Math.Min(booksResponse.PageNumber * booksResponse.PageSize, booksResponse.TotalCount) 
+            of @booksResponse.TotalCount books
+        </span>
+        <div class="d-flex gap-1 align-items-center">
+            @foreach (var p in GetLibraryPageNumbers())
+            {
+                if (p == -1)
+                {
+                    <span class="text-muted px-1">…</span>
+                }
+                else
+                {
+                    <button type="button"
+                            class="btn btn-sm rounded-circle @(p == booksResponse.PageNumber ? "btn-primary" : "btn-outline-secondary")"
+                            style="width: 2rem; height: 2rem; min-width: 2rem; padding: 0;"
+                            @onclick="() => GoToLibraryPage(p)"
+                            disabled="@isLoading">
+                        @p
+                    </button>
+                }
+            }
+        </div>
+    </nav>
+}
+else if (booksResponse?.Items != null && booksResponse.Items.Count == 0)
+{
+    <div class="alert alert-info border-0 rounded-3 shadow-sm d-flex align-items-center" role="alert">
+        <i class="bi bi-info-circle-fill me-3 fs-5"></i>
+        <div>No books found matching your filters.</div>
+    </div>
+}
+}
+
+@if (userLibraryTab == "history")
+{
+    <div class="row">
+        <div class="col-md-3 col-lg-2 mb-4">
+            <nav class="nav flex-column border rounded-3 p-2 bg-light">
+                <button type="button" class="nav-link text-start rounded-2 py-2 px-3 @(myHistorySubTab == "current" ? "active bg-primary text-white" : "text-dark")" @onclick='() => SetMyHistorySubTab("current")'>
+                    <i class="bi bi-book-half me-2"></i> Current Borrows
+                </button>
+                <button type="button" class="nav-link text-start rounded-2 py-2 px-3 mt-1 @(myHistorySubTab == "history" ? "active bg-primary text-white" : "text-dark")" @onclick='() => SetMyHistorySubTab("history")'>
+                    <i class="bi bi-clock-history me-2"></i> Loan History
+                </button>
+            </nav>
+        </div>
+        <div class="col-md-9 col-lg-10">
+            @if (myHistorySubTab == "current")
+            {
+                @if (isLoadingBorrowedBooks)
+                {
+                    <div class="text-center my-5">
+                        <div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>
+                        <p class="mt-2">Loading your borrowed books...</p>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(borrowedBooksErrorMessage))
+                {
+                    <div class="alert alert-danger" role="alert"><strong>Error:</strong> @borrowedBooksErrorMessage</div>
+                }
+                else if (borrowedBooks != null && borrowedBooks.Count > 0)
+                {
+                    <div class="table-responsive rounded-3 border overflow-hidden shadow-sm mb-4">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                                        <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleMyHistorySortBy("Name")'>
+                                            Name
+                                            @if (myHistorySortBy == "Name")
+                                            { <i class="bi @(myHistorySortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i> }
+                                            else
+                                            { <i class="bi bi-sort-down-alt opacity-50"></i> }
+                                        </button>
+                                    </th>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                                        <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleMyHistorySortBy("Author")'>
+                                            Author
+                                            @if (myHistorySortBy == "Author")
+                                            { <i class="bi @(myHistorySortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i> }
+                                            else
+                                            { <i class="bi bi-sort-down-alt opacity-50"></i> }
+                                        </button>
+                                    </th>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">Issue Year</th>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">ISBN</th>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">Borrowed Date</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white">
+                                @foreach (var book in GetSortedBorrowedBooks())
+                                {
+                                    <tr class="border-bottom">
+                                        <td class="px-4 py-3">@book.Name</td>
+                                        <td class="px-4 py-3">@book.Author</td>
+                                        <td class="px-4 py-3">@book.IssueYear</td>
+                                        <td class="px-4 py-3">@FormatIsbn(book.ISBN)</td>
+                                        <td class="px-4 py-3">@book.BorrowedDate.ToString("yyyy-MM-dd HH:mm")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info border-0 rounded-3 d-flex align-items-center" role="alert">
+                        <i class="bi bi-info-circle-fill me-3 fs-5"></i>
+                        <div>You don't have any borrowed books at the moment.</div>
+                    </div>
+                }
+            }
+            else
+            {
+                @if (isLoadingLoanHistory)
+                {
+                    <div class="text-center my-5">
+                        <div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>
+                        <p class="mt-2">Loading loan history...</p>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(loanHistoryErrorMessage))
+                {
+                    <div class="alert alert-danger" role="alert"><strong>Error:</strong> @loanHistoryErrorMessage</div>
+                }
+                else if (loanHistoryResponse?.Items != null && loanHistoryResponse.Items.Count > 0)
+                {
+                    <div class="table-responsive rounded-3 border overflow-hidden shadow-sm mb-4">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                                        <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleMyHistorySortBy("Name")'>
+                                            Name
+                                            @if (myHistorySortBy == "Name")
+                                            { <i class="bi @(myHistorySortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i> }
+                                            else
+                                            { <i class="bi bi-sort-down-alt opacity-50"></i> }
+                                        </button>
+                                    </th>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                                        <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleMyHistorySortBy("Author")'>
+                                            Author
+                                            @if (myHistorySortBy == "Author")
+                                            { <i class="bi @(myHistorySortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i> }
+                                            else
+                                            { <i class="bi bi-sort-down-alt opacity-50"></i> }
+                                        </button>
+                                    </th>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">Borrowed</th>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">Returned</th>
+                                    <th class="border-0 py-3 px-4 fw-semibold text-secondary">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white">
+                                @foreach (var item in GetSortedLoanHistoryItems())
+                                {
+                                    <tr class="border-bottom">
+                                        <td class="px-4 py-3">@item.Name</td>
+                                        <td class="px-4 py-3">@item.Author</td>
+                                        <td class="px-4 py-3">@item.BorrowedDate.ToString("yyyy-MM-dd HH:mm")</td>
+                                        <td class="px-4 py-3">@(item.ReturnedDate?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                                        <td class="px-4 py-3">
+                                            @if (item.IsReturned)
+                                            { <span class="badge bg-secondary">Returned</span> }
+                                            else
+                                            { <span class="badge bg-primary">Active</span> }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (loanHistoryResponse.TotalPages > 1)
+                    {
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <span class="text-muted small">Page @loanHistoryPage of @loanHistoryResponse.TotalPages (@loanHistoryResponse.TotalCount total)</span>
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(loanHistoryPage <= 1)" @onclick="() => GoToLoanHistoryPage(loanHistoryPage - 1)">Previous</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(loanHistoryPage >= loanHistoryResponse.TotalPages)" @onclick="() => GoToLoanHistoryPage(loanHistoryPage + 1)">Next</button>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="alert alert-info border-0 rounded-3 d-flex align-items-center" role="alert">
+                        <i class="bi bi-info-circle-fill me-3 fs-5"></i>
+                        <div>You don't have any loan history yet.</div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+}
+
+@if (activeTab == "accounts" && isAdmin)
+{
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h1 class="h3 fw-semibold mb-1" style="color: #1e293b;">Account Management</h1>
+            <p class="text-muted small mb-0">View user statistics and borrowed books</p>
+        </div>
+    </div>
+    <div class="card border-0 shadow-sm rounded-3 mb-4">
+        <div class="card-body p-4">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="adminAccountNameFilter" class="form-label small text-muted fw-medium">Filter by Account Name</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0 rounded-start-3"><i class="bi bi-person text-muted"></i></span>
+                        <input type="text" class="form-control border-start-0 rounded-end-3" id="adminAccountNameFilter" value="@adminAccountNameFilter" @oninput="HandleAdminAccountNameFilterInput" placeholder="Account name..." autocomplete="off" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (isLoadingAdminStats)
+    {
+        <div class="text-center my-5 py-5">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Loading account statistics...</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive rounded-3 border overflow-hidden shadow-sm">
+            <table class="table table-hover align-middle mb-0">
+                <thead style="background: #f8fafc;">
+                    <tr>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                            <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleAdminAccountsSortBy("UserName")'>
+                                User Name
+                                @if (adminAccountsSortBy == "UserName")
+                                {
+                                    <i class="bi @(adminAccountsSortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-sort-down-alt opacity-50"></i>
+                                }
+                            </button>
+                        </th>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                            <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleAdminAccountsSortBy("BorrowedCount")'>
+                                Borrowed
+                                @if (adminAccountsSortBy == "BorrowedCount")
+                                {
+                                    <i class="bi @(adminAccountsSortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-sort-down-alt opacity-50"></i>
+                                }
+                            </button>
+                        </th>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Returned</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    @foreach (var (user, index) in adminUserStats.Select((u, i) => (u, i)))
+                    {
+                        <tr class="border-bottom" style="@(index % 2 == 0 ? "background-color: #e8f4fc !important;" : "")">
+                            <td class="px-4 py-3">@user.UserName</td>
+                            <td class="px-4 py-3">
+                                @if (user.BorrowedCount > 0)
+                                {
+                                    <button type="button" class="btn btn-link p-0 text-primary text-decoration-none" @onclick='() => ShowUserBorrowedModal(user.UserId, user.UserName)'>
+                                        @user.BorrowedCount
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span>0</span>
+                                }
+                            </td>
+                            <td class="px-4 py-3">
+                                @if (user.ReturnedCount > 0)
+                                {
+                                    <button type="button" class="btn btn-link p-0 text-primary text-decoration-none" @onclick='() => ShowUserReturnedModal(user.UserId, user.UserName)'>
+                                        @user.ReturnedCount
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span>0</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (adminUserStats.Count == 0)
+        {
+            <div class="alert alert-info border-0 rounded-3 shadow-sm d-flex align-items-center mt-3" role="alert">
+                <i class="bi bi-info-circle-fill me-3 fs-5"></i>
+                <div>No users found.</div>
+            </div>
+        }
+    }
+}
+
+@if (activeTab == "books" && isAdmin)
+{
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h1 class="h3 fw-semibold mb-1" style="color: #1e293b;">Books Management</h1>
+            <p class="text-muted small mb-0">View all books in the library</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-success rounded-pill px-4 shadow-sm" @onclick="ShowAddBookModal">
+                <i class="bi bi-plus-circle me-2"></i> Add New Book
+            </button>
+        </div>
+    </div>
+    <div class="card border-0 shadow-sm rounded-3 mb-4">
+        <div class="card-body p-4">
+            <div class="row g-3">
+                <div class="col-12">
+                    <label for="adminBooksSearchFilter" class="form-label small text-muted fw-medium">Search books</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0 rounded-start-3"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" class="form-control border-start-0 rounded-end-3" id="adminBooksSearchFilter" value="@adminBooksSearchFilter" @oninput="HandleAdminBooksSearchFilterInput" placeholder="Search by name, author or ISBN (comma-separated for multiple terms)..." autocomplete="off" />
+                    </div>
+                    <small class="text-muted">e.g. rowling, harry potter, 978</small>
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="adminBooksOnlyAvailable" checked="@adminBooksOnlyAvailable" @onchange="HandleAdminBooksOnlyAvailableChange" />
+                        <label class="form-check-label small text-muted" for="adminBooksOnlyAvailable">Show only available to borrow</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (isLoadingAdminBooks)
+    {
+        <div class="text-center my-5 py-5">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Loading books...</p>
+        </div>
+    }
+    else if (adminBooksResponse?.Items != null && adminBooksResponse.Items.Count > 0)
+    {
+        <div class="table-responsive rounded-3 border overflow-hidden shadow-sm">
+            <table class="table table-hover align-middle mb-0">
+                <thead style="background: #f8fafc;">
+                    <tr>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                            <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleAdminBooksSortBy("Name")'>
+                                Name
+                                @if (adminBooksSortBy == "Name")
+                                {
+                                    <i class="bi @(adminBooksSortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-sort-down-alt opacity-50"></i>
+                                }
+                            </button>
+                        </th>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">
+                            <button type="button" class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold d-flex align-items-center gap-1" @onclick='() => HandleAdminBooksSortBy("Author")'>
+                                Author
+                                @if (adminBooksSortBy == "Author")
+                                {
+                                    <i class="bi @(adminBooksSortDirection == "desc" ? "bi-sort-down" : "bi-sort-up")"></i>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-sort-down-alt opacity-50"></i>
+                                }
+                            </button>
+                        </th>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Issue Year</th>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">ISBN</th>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Number of Pieces</th>
+                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Available to borrow</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    @foreach (var (book, index) in adminBooksResponse.Items.Select((b, i) => (b, i)))
+                    {
+                        <tr class="border-bottom" style="@(index % 2 == 0 ? "background-color: #e8f4fc !important;" : "")">
+                            <td class="px-4 py-3">@book.Name</td>
+                            <td class="px-4 py-3">@book.Author</td>
+                            <td class="px-4 py-3">@book.IssueYear</td>
+                            <td class="px-4 py-3">@FormatIsbn(book.ISBN)</td>
+                            <td class="px-4 py-3">@book.NumberOfPieces</td>
+                            <td class="px-4 py-3">@GetAdminBookAvailableCount(book.Id)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <nav class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-3">
+            <span class="text-muted small">
+                Showing @((adminBooksResponse.PageNumber - 1) * adminBooksResponse.PageSize + 1) to 
+                @Math.Min(adminBooksResponse.PageNumber * adminBooksResponse.PageSize, adminBooksResponse.TotalCount) 
+                of @adminBooksResponse.TotalCount books
+            </span>
+            <div class="d-flex gap-1 align-items-center">
+                @foreach (var p in GetAdminBooksPageNumbers())
+                {
+                    if (p == -1)
+                    {
+                        <span class="text-muted px-1">…</span>
+                    }
+                    else
+                    {
+                        <button type="button"
+                                class="btn btn-sm rounded-circle @(p == adminBooksResponse.PageNumber ? "btn-primary" : "btn-outline-secondary")"
+                                style="width: 2rem; height: 2rem; min-width: 2rem; padding: 0;"
+                                @onclick="() => GoToAdminBooksPage(p)"
+                                disabled="@isLoadingAdminBooks">
+                            @p
+                        </button>
+                    }
+                }
+            </div>
+        </nav>
+    }
+    else if (adminBooksResponse?.Items != null && adminBooksResponse.Items.Count == 0)
+    {
+        <div class="alert alert-info border-0 rounded-3 shadow-sm d-flex align-items-center" role="alert">
+            <i class="bi bi-info-circle-fill me-3 fs-5"></i>
+            <div>No books found.</div>
+        </div>
+    }
+}
+
+<footer class="mt-5 py-3 text-center text-muted small">Version 0.0.0.0</footer>
+
+<!-- User Borrowed Books Modal (Admin) -->
+@if (showUserBorrowedModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseUserBorrowedModal">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                <div class="modal-header border-0 py-4" style="background: #f8fafc;">
+                    <h5 class="modal-title fw-semibold">Borrowed books - @selectedUserName</h5>
+                    <button type="button" class="btn-close" @onclick="CloseUserBorrowedModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-4">
+                    @if (isLoadingUserBorrowedBooks)
+                    {
+                        <div class="text-center my-5">
+                            <div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>
+                            <p class="mt-2">Loading borrowed books...</p>
+                        </div>
+                    }
+                    else if (userBorrowedBooks != null && userBorrowedBooks.Count > 0)
+                    {
+                        <div class="table-responsive rounded-3 border overflow-hidden">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead style="background: #f8fafc;">
+                                    <tr>
+                                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Book Name</th>
+                                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Author</th>
+                                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">ISBN</th>
+                                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Borrowed Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white">
+                                    @foreach (var item in userBorrowedBooks)
+                                    {
+                                        <tr class="border-bottom">
+                                            <td class="px-4 py-3">@item.Name</td>
+                                            <td class="px-4 py-3">@item.Author</td>
+                                            <td class="px-4 py-3">@FormatIsbn(item.ISBN)</td>
+                                            <td class="px-4 py-3">@item.BorrowedDate.ToString("yyyy-MM-dd HH:mm")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info border-0 rounded-3">No borrowed books.</div>
+                    }
+                </div>
+                <div class="modal-footer border-0 pt-4">
+                    <button type="button" class="btn btn-primary rounded-pill px-4" @onclick="CloseUserBorrowedModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- User Returned Books Modal (Admin) -->
+@if (showUserReturnedModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseUserReturnedModal">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                <div class="modal-header border-0 py-4" style="background: #f8fafc;">
+                    <h5 class="modal-title fw-semibold">Returned books - @selectedUserName</h5>
+                    <button type="button" class="btn-close" @onclick="CloseUserReturnedModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-4">
+                    @if (isLoadingUserReturnedBooks)
+                    {
+                        <div class="text-center my-5">
+                            <div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>
+                            <p class="mt-2">Loading returned books...</p>
+                        </div>
+                    }
+                    else if (userReturnedBooks != null && userReturnedBooks.Count > 0)
+                    {
+                        <div class="table-responsive rounded-3 border overflow-hidden">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead style="background: #f8fafc;">
+                                    <tr>
+                                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Book Name</th>
+                                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Author</th>
+                                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">ISBN</th>
+                                        <th class="border-0 py-3 px-4 fw-semibold text-secondary">Returned Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white">
+                                    @foreach (var item in userReturnedBooks)
+                                    {
+                                        <tr class="border-bottom">
+                                            <td class="px-4 py-3">@item.Name</td>
+                                            <td class="px-4 py-3">@item.Author</td>
+                                            <td class="px-4 py-3">@FormatIsbn(item.ISBN)</td>
+                                            <td class="px-4 py-3">@item.ReturnedDate.ToString("yyyy-MM-dd HH:mm")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info border-0 rounded-3">No returned books.</div>
+                    }
+                </div>
+                <div class="modal-footer border-0 pt-4">
+                    <button type="button" class="btn btn-primary rounded-pill px-4" @onclick="CloseUserReturnedModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Book Modal -->
+@if (showAddBookModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseModalOnBackdrop">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                <div class="modal-header border-0 py-4" style="background: #f8fafc;">
+                    <h5 class="modal-title fw-semibold">Add New Book</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAddBookModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-4">
+                    <EditForm Model="@newBookModel" OnValidSubmit="HandleAddBookSubmit">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+                        
+                        @if (!string.IsNullOrEmpty(addBookErrorMessage))
+                        {
+                            <div class="alert alert-danger" role="alert">
+                                @addBookErrorMessage
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label for="bookName" class="form-label">Name <span class="text-danger">*</span></label>
+                            <InputText id="bookName" class="form-control rounded-3" @bind-Value="newBookModel.name" placeholder="Enter book name" />
+                            <ValidationMessage For="@(() => newBookModel.name)" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="bookAuthor" class="form-label">Author <span class="text-danger">*</span></label>
+                            <InputText id="bookAuthor" class="form-control rounded-3" @bind-Value="newBookModel.author" placeholder="Enter author name" />
+                            <ValidationMessage For="@(() => newBookModel.author)" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="bookIssueYear" class="form-label">Issue Year <span class="text-danger">*</span></label>
+                            <InputNumber id="bookIssueYear" class="form-control rounded-3" @bind-Value="newBookModel.issueyear" placeholder="Enter issue year" />
+                            <ValidationMessage For="@(() => newBookModel.issueyear)" />
+                            <small class="form-text text-muted">Year must be between 1000 and @DateTime.Now.Year</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="bookIsbn" class="form-label">ISBN <span class="text-danger">*</span></label>
+                            <div class="position-relative">
+                                <input type="text" 
+                                       id="bookIsbn" 
+                                       class="form-control rounded-3 @(isbnValidationState == true ? "is-valid" : (isbnValidationState == false ? "is-invalid" : ""))" 
+                                       value="@newBookModel.isbn" 
+                                       @oninput="HandleIsbnInput" 
+                                       placeholder="978-XX-XXXXXXX-X"
+                                       maxlength="16" />
+                                @if (isbnValidationState.HasValue && !string.IsNullOrWhiteSpace(newBookModel.isbn))
+                                {
+                                    <span class="position-absolute top-50 end-0 translate-middle-y pe-3">
+                                        @if (isbnValidationState.Value)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success" style="font-size: 1.2rem;"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-x-circle-fill text-danger" style="font-size: 1.2rem;"></i>
+                                        }
+                                    </span>
+                                }
+                            </div>
+                            <ValidationMessage For="@(() => newBookModel.isbn)" />
+                            <small class="form-text text-muted">Format: ISBN-13 (13 digits)</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="bookNumberOfPieces" class="form-label">Number of Pieces <span class="text-danger">*</span></label>
+                            <InputNumber id="bookNumberOfPieces" class="form-control rounded-3" @bind-Value="newBookModel.numberOfPieces" placeholder="Enter number of pieces" min="0" />
+                            <ValidationMessage For="@(() => newBookModel.numberOfPieces)" />
+                            <small class="form-text text-muted">Number of physical copies available</small>
+                        </div>
+
+                        <div class="modal-footer border-0 pt-4">
+                            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" @onclick="CloseAddBookModal" disabled="@isAddingBook">Cancel</button>
+                            <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm" disabled="@isAddingBook">
+                                @if (isAddingBook)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                }
+                                Add Book
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@inject ICatalogService CatalogService
+@inject ILoanService LoanService
+@inject IAdminService AdminService
+@inject IIsbnValidationService IsbnValidationService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+@code {
+    private PagedResult<BookDto>? booksResponse;
+    private bool isLoading = false;
+    private string? errorMessage;
+
+    private string activeTab = "library";
+    private string userLibraryTab = "library";
+    private bool isAdmin = false;
+
+    private List<AdminUserStatsDto> adminUserStats = new();
+    private bool isLoadingAdminStats = false;
+
+    private PagedResult<BookDto>? adminBooksResponse;
+    private bool isLoadingAdminBooks = false;
+    private int adminBooksPage = 1;
+    private Dictionary<string, BorrowStatusDto> adminBookBorrowStatuses = new();
+    private string adminBooksSearchFilter = string.Empty;
+    private bool adminBooksOnlyAvailable = false;
+    private string adminBooksSortBy = "Name";
+    private string adminBooksSortDirection = "asc";
+    private System.Threading.Timer? adminBooksFilterDebounceTimer;
+
+    private string adminAccountNameFilter = string.Empty;
+    private string adminAccountsSortBy = "UserName";
+    private string adminAccountsSortDirection = "asc";
+    private System.Threading.Timer? adminAccountsFilterDebounceTimer;
+
+    private bool showUserBorrowedModal = false;
+    private int selectedUserId;
+    private string selectedUserName = string.Empty;
+    private List<BorrowedItemDto> userBorrowedBooks = new();
+    private bool isLoadingUserBorrowedBooks = false;
+
+    private bool showUserReturnedModal = false;
+    private List<ReturnedItemDto> userReturnedBooks = new();
+    private bool isLoadingUserReturnedBooks = false;
+    
+    private string searchFilter = string.Empty;
+    private bool onlyAvailableFilter = false;
+    private string sortBy = "Name";
+    private string sortDirection = "asc";
+    
+    private int currentPage = 1;
+    private const int pageSize = 10;
+    
+    private System.Threading.Timer? filterDebounceTimer;
+
+    // Add Book Modal State
+    private bool showAddBookModal = false;
+    private bool isAddingBook = false;
+    private string? addBookErrorMessage;
+    private CreateBookRequest newBookModel = new();
+    private bool? isbnValidationState = null; // null = not validated yet, true = valid, false = invalid
+    
+    // Debounce timer for ISBN validation
+    private System.Threading.Timer? isbnValidationDebounceTimer;
+
+    // Borrow/Return State
+    private Dictionary<string, BorrowStatusDto> bookBorrowStatuses = new();
+    private bool isProcessingBorrow = false;
+    private bool isProcessingReturn = false;
+    private string? processingBookId = null;
+    private int? currentUserId = null;
+
+    // Borrowed Books (My History tab)
+    private bool isLoadingBorrowedBooks = false;
+    private string? borrowedBooksErrorMessage;
+    private List<BorrowedItemDto> borrowedBooks = new();
+
+    private PagedResult<LoanHistoryItemDto>? loanHistoryResponse;
+    private int loanHistoryPage = 1;
+    private const int loanHistoryPageSize = 10;
+    private bool isLoadingLoanHistory = false;
+    private string? loanHistoryErrorMessage;
+
+    private string myHistorySubTab = "current";
+    private string myHistorySortBy = "Name";
+    private string myHistorySortDirection = "asc";
+
+    protected override async Task OnInitializedAsync()
+    {
+        ApplyNameFromQueryString();
+        await GetCurrentUserIdAsync();
+        await CheckIsAdminAsync();
+        if (isAdmin)
+        {
+            activeTab = "accounts";
+            await LoadAdminUserStats();
+        }
+        else
+        {
+            await LoadBooks();
+            await LoadBookBorrowStatuses();
+        }
+    }
+
+    private void ApplyNameFromQueryString()
+    {
+        var uri = new Uri(NavigationManager.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("search", out var search) && !string.IsNullOrWhiteSpace(search))
+        {
+            searchFilter = search.ToString().Trim();
+        }
+    }
+
+    private async Task CheckIsAdminAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userTypeClaim = authState.User?.Claims?.FirstOrDefault(c => c.Type == "UserType");
+            isAdmin = string.Equals(userTypeClaim?.Value, "Admin", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            isAdmin = false;
+        }
+    }
+
+    private async Task SwitchTab(string tab)
+    {
+        activeTab = tab;
+        if (tab == "accounts" && adminUserStats.Count == 0)
+        {
+            await LoadAdminUserStats();
+        }
+        else if (tab == "books" && adminBooksResponse == null)
+        {
+            await LoadAdminBooks();
+        }
+    }
+
+    private async Task SwitchUserTab(string tab)
+    {
+        userLibraryTab = tab;
+        if (tab == "history")
+        {
+            await LoadBorrowedBooks();
+            await LoadLoanHistory();
+        }
+    }
+
+    private void SetMyHistorySubTab(string subTab)
+    {
+        myHistorySubTab = subTab;
+    }
+
+    private void HandleMyHistorySortBy(string column)
+    {
+        if (myHistorySortBy == column)
+            myHistorySortDirection = myHistorySortDirection == "asc" ? "desc" : "asc";
+        else
+        {
+            myHistorySortBy = column;
+            myHistorySortDirection = "asc";
+        }
+    }
+
+    private IEnumerable<BorrowedItemDto> GetSortedBorrowedBooks()
+    {
+        if (borrowedBooks == null || borrowedBooks.Count == 0) return borrowedBooks ?? new List<BorrowedItemDto>();
+        var query = borrowedBooks.AsEnumerable();
+        query = myHistorySortBy == "Name"
+            ? (myHistorySortDirection == "asc" ? query.OrderBy(b => b.Name) : query.OrderByDescending(b => b.Name))
+            : (myHistorySortDirection == "asc" ? query.OrderBy(b => b.Author) : query.OrderByDescending(b => b.Author));
+        return query.ToList();
+    }
+
+    private IEnumerable<LoanHistoryItemDto> GetSortedLoanHistoryItems()
+    {
+        if (loanHistoryResponse?.Items == null || loanHistoryResponse.Items.Count == 0)
+            return loanHistoryResponse?.Items ?? new List<LoanHistoryItemDto>();
+        var query = loanHistoryResponse.Items.AsEnumerable();
+        query = myHistorySortBy == "Name"
+            ? (myHistorySortDirection == "asc" ? query.OrderBy(i => i.Name) : query.OrderByDescending(i => i.Name))
+            : (myHistorySortDirection == "asc" ? query.OrderBy(i => i.Author) : query.OrderByDescending(i => i.Author));
+        return query.ToList();
+    }
+
+    private async Task LoadAdminUserStats()
+    {
+        isLoadingAdminStats = true;
+        try
+        {
+            adminUserStats = await AdminService.GetAllUsersWithStatsAsync(
+                string.IsNullOrWhiteSpace(adminAccountNameFilter) ? null : adminAccountNameFilter,
+                adminAccountsSortBy,
+                adminAccountsSortDirection);
+        }
+        catch
+        {
+            adminUserStats = new();
+        }
+        finally
+        {
+            isLoadingAdminStats = false;
+        }
+    }
+
+    private void HandleAdminAccountNameFilterInput(ChangeEventArgs e)
+    {
+        adminAccountNameFilter = e.Value?.ToString() ?? string.Empty;
+        OnAdminAccountsFilterChanged();
+    }
+
+    private void OnAdminAccountsFilterChanged()
+    {
+        adminAccountsFilterDebounceTimer?.Dispose();
+        adminAccountsFilterDebounceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadAdminUserStats();
+                StateHasChanged();
+            });
+        }, null, 500, Timeout.Infinite);
+    }
+
+    private async Task HandleAdminAccountsSortBy(string column)
+    {
+        if (adminAccountsSortBy == column)
+        {
+            adminAccountsSortDirection = adminAccountsSortDirection == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            adminAccountsSortBy = column;
+            adminAccountsSortDirection = "asc";
+        }
+        await LoadAdminUserStats();
+    }
+
+    private async Task LoadAdminBooks()
+    {
+        isLoadingAdminBooks = true;
+        try
+        {
+            var request = new ListBooksRequest
+            {
+                PageNumber = adminBooksPage,
+                PageSize = pageSize,
+                Search = string.IsNullOrWhiteSpace(adminBooksSearchFilter) ? null : adminBooksSearchFilter,
+                OnlyAvailable = adminBooksOnlyAvailable,
+                SortBy = adminBooksSortBy,
+                SortDirection = adminBooksSortDirection
+            };
+            adminBooksResponse = await CatalogService.ListBooksAsync(request);
+            await LoadAdminBookBorrowStatuses();
+        }
+        catch
+        {
+            adminBooksResponse = null;
+        }
+        finally
+        {
+            isLoadingAdminBooks = false;
+        }
+    }
+
+    private void HandleAdminBooksSearchFilterInput(ChangeEventArgs e)
+    {
+        adminBooksSearchFilter = e.Value?.ToString() ?? string.Empty;
+        adminBooksPage = 1;
+        OnAdminBooksFilterChanged();
+    }
+
+    private async Task HandleAdminBooksOnlyAvailableChange(ChangeEventArgs e)
+    {
+        adminBooksOnlyAvailable = e.Value is true;
+        adminBooksPage = 1;
+        await LoadAdminBooks();
+    }
+
+    private void OnAdminBooksFilterChanged()
+    {
+        adminBooksFilterDebounceTimer?.Dispose();
+        adminBooksFilterDebounceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadAdminBooks();
+                StateHasChanged();
+            });
+        }, null, 500, Timeout.Infinite);
+    }
+
+    private async Task HandleAdminBooksSortBy(string column)
+    {
+        if (adminBooksSortBy == column)
+        {
+            adminBooksSortDirection = adminBooksSortDirection == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            adminBooksSortBy = column;
+            adminBooksSortDirection = "asc";
+        }
+        adminBooksPage = 1;
+        await LoadAdminBooks();
+    }
+
+    private async Task LoadAdminBookBorrowStatuses()
+    {
+        if (adminBooksResponse?.Items == null || adminBooksResponse.Items.Count == 0 || currentUserId == null)
+            return;
+        try
+        {
+            var bookIds = adminBooksResponse.Items.Select(b => b.Id).ToList();
+            adminBookBorrowStatuses = await LoanService.GetBorrowStatusBatchAsync(bookIds, currentUserId.Value);
+        }
+        catch
+        {
+            adminBookBorrowStatuses = new();
+        }
+    }
+
+    private int GetAdminBookAvailableCount(string bookId)
+    {
+        if (!adminBookBorrowStatuses.TryGetValue(bookId, out var status))
+            return 0;
+        return status.AvailableCount;
+    }
+
+    private IEnumerable<int> GetAdminBooksPageNumbers()
+    {
+        if (adminBooksResponse == null || adminBooksResponse.TotalPages <= 0) return Enumerable.Empty<int>();
+        var total = adminBooksResponse.TotalPages;
+        var current = adminBooksResponse.PageNumber;
+        if (total <= 7) return Enumerable.Range(1, total);
+        var result = new List<int> { 1 };
+        var showLeftEllipsis = current > 3;
+        var showRightEllipsis = current < total - 2;
+        if (showLeftEllipsis) result.Add(-1);
+        var start = Math.Max(2, current - 1);
+        var end = Math.Min(total - 1, current + 1);
+        for (var i = start; i <= end; i++)
+            if (!result.Contains(i)) result.Add(i);
+        if (showRightEllipsis) result.Add(-1);
+        if (total > 1) result.Add(total);
+        return result;
+    }
+
+    private async Task GoToAdminBooksPage(int page)
+    {
+        if (adminBooksResponse == null || page < 1 || page > adminBooksResponse.TotalPages) return;
+        adminBooksPage = page;
+        await LoadAdminBooks();
+    }
+
+    private async Task ShowUserBorrowedModal(int userId, string userName)
+    {
+        selectedUserId = userId;
+        selectedUserName = userName;
+        showUserBorrowedModal = true;
+        userBorrowedBooks = new();
+        await LoadUserBorrowedBooks();
+    }
+
+    private void CloseUserBorrowedModal()
+    {
+        showUserBorrowedModal = false;
+        selectedUserId = 0;
+        selectedUserName = string.Empty;
+        userBorrowedBooks = new();
+    }
+
+    private async Task LoadUserBorrowedBooks()
+    {
+        isLoadingUserBorrowedBooks = true;
+        try
+        {
+            userBorrowedBooks = await LoanService.GetUserBorrowedBooksAsync(selectedUserId);
+        }
+        catch
+        {
+            userBorrowedBooks = new();
+        }
+        finally
+        {
+            isLoadingUserBorrowedBooks = false;
+        }
+    }
+
+    private async Task ShowUserReturnedModal(int userId, string userName)
+    {
+        selectedUserId = userId;
+        selectedUserName = userName;
+        showUserReturnedModal = true;
+        userReturnedBooks = new();
+        await LoadUserReturnedBooks();
+    }
+
+    private void CloseUserReturnedModal()
+    {
+        showUserReturnedModal = false;
+        selectedUserId = 0;
+        selectedUserName = string.Empty;
+        userReturnedBooks = new();
+    }
+
+    private async Task LoadUserReturnedBooks()
+    {
+        isLoadingUserReturnedBooks = true;
+        try
+        {
+            userReturnedBooks = await LoanService.GetUserReturnedBooksAsync(selectedUserId);
+        }
+        catch
+        {
+            userReturnedBooks = new();
+        }
+        finally
+        {
+            isLoadingUserReturnedBooks = false;
+        }
+    }
+
+    private async Task LoadBooks()
+    {
+        isLoading = true;
+        errorMessage = null;
+        
+        try
+        {
+            var request = new ListBooksRequest
+            {
+                PageNumber = currentPage,
+                PageSize = pageSize,
+                Search = string.IsNullOrWhiteSpace(searchFilter) ? null : searchFilter,
+                OnlyAvailable = onlyAvailableFilter,
+                SortBy = sortBy,
+                SortDirection = sortDirection
+            };
+            
+            booksResponse = await CatalogService.ListBooksAsync(request);
+            // Reload borrow statuses after loading books
+            await LoadBookBorrowStatuses();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load books: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void HandleSearchFilterInput(ChangeEventArgs e)
+    {
+        searchFilter = e.Value?.ToString() ?? string.Empty;
+        OnFilterChanged();
+    }
+
+    private void OnFilterChanged()
+    {
+        // Reset to first page when filter changes
+        currentPage = 1;
+        
+        // Debounce: Wait 500ms after user stops typing before making API call
+        filterDebounceTimer?.Dispose();
+        filterDebounceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadBooks();
+                StateHasChanged();
+            });
+        }, null, 500, Timeout.Infinite);
+    }
+
+    private async Task HandleOnlyAvailableFilterChange(ChangeEventArgs e)
+    {
+        onlyAvailableFilter = e.Value is true;
+        currentPage = 1;
+        await LoadBooks();
+    }
+
+    private async Task HandleSortBy(string column)
+    {
+        if (sortBy == column)
+        {
+            sortDirection = sortDirection == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            sortBy = column;
+            sortDirection = "asc";
+        }
+        currentPage = 1;
+        await LoadBooks();
+    }
+
+    private IEnumerable<int> GetLibraryPageNumbers()
+    {
+        if (booksResponse == null || booksResponse.TotalPages <= 0) return Enumerable.Empty<int>();
+        var total = booksResponse.TotalPages;
+        var current = booksResponse.PageNumber;
+        if (total <= 7) return Enumerable.Range(1, total);
+        var result = new List<int> { 1 };
+        var showLeftEllipsis = current > 3;
+        var showRightEllipsis = current < total - 2;
+        if (showLeftEllipsis) result.Add(-1);
+        var start = Math.Max(2, current - 1);
+        var end = Math.Min(total - 1, current + 1);
+        for (var i = start; i <= end; i++)
+            if (!result.Contains(i)) result.Add(i);
+        if (showRightEllipsis) result.Add(-1);
+        if (total > 1) result.Add(total);
+        return result;
+    }
+
+    private async Task GoToLibraryPage(int page)
+    {
+        if (booksResponse == null || page < 1 || page > booksResponse.TotalPages) return;
+        currentPage = page;
+        await LoadBooks();
+    }
+
+    private async Task GetCurrentUserIdAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User?.Claims?.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out var userId))
+            {
+                currentUserId = userId;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting current user ID: {ex.Message}");
+        }
+    }
+
+    private async Task LoadBookBorrowStatuses()
+    {
+        if (booksResponse?.Items == null || booksResponse.Items.Count == 0 || currentUserId == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var bookIds = booksResponse.Items.Select(b => b.Id).ToList();
+            bookBorrowStatuses = await LoanService.GetBorrowStatusBatchAsync(bookIds, currentUserId.Value);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading borrow statuses: {ex.Message}");
+        }
+    }
+
+    private bool IsBookBorrowedByUser(string bookId)
+    {
+        return bookBorrowStatuses.TryGetValue(bookId, out var status) && status.IsBorrowedByUser;
+    }
+
+    private bool CanBorrowBook(string bookId)
+    {
+        if (!bookBorrowStatuses.TryGetValue(bookId, out var status))
+        {
+            // If status not loaded yet, return false to disable button
+            return false;
+        }
+        return status.AvailableCount > 0;
+    }
+
+    private int GetAvailableCount(string bookId)
+    {
+        if (!bookBorrowStatuses.TryGetValue(bookId, out var status))
+        {
+            // If status not loaded yet, return 0
+            return 0;
+        }
+        return status.AvailableCount;
+    }
+
+    private async Task HandleBorrowBook(string bookId)
+    {
+        if (string.IsNullOrWhiteSpace(bookId) || currentUserId == null)
+        {
+            return;
+        }
+
+        isProcessingBorrow = true;
+        processingBookId = bookId;
+        StateHasChanged();
+
+        try
+        {
+            await LoanService.BorrowBookAsync(bookId, currentUserId.Value);
+            await RefreshBorrowStatus(bookId);
+            await LoadBooks();
+            await LoadBorrowedBooks();
+            await LoadLoanHistory();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception borrowing book: {ex.Message}");
+        }
+        finally
+        {
+            isProcessingBorrow = false;
+            processingBookId = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleReturnBook(string bookId)
+    {
+        if (string.IsNullOrWhiteSpace(bookId) || currentUserId == null)
+        {
+            return;
+        }
+
+        isProcessingReturn = true;
+        processingBookId = bookId;
+        StateHasChanged();
+
+        try
+        {
+            await LoanService.ReturnBookAsync(bookId, currentUserId.Value);
+            await RefreshBorrowStatus(bookId);
+            await LoadBooks();
+            await LoadBorrowedBooks();
+            await LoadLoanHistory();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception returning book: {ex.Message}");
+        }
+        finally
+        {
+            isProcessingReturn = false;
+            processingBookId = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshBorrowStatus(string bookId)
+    {
+        if (string.IsNullOrWhiteSpace(bookId) || currentUserId == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var status = await LoanService.GetBorrowStatusAsync(bookId, currentUserId.Value);
+            bookBorrowStatuses[bookId] = status;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing borrow status: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        filterDebounceTimer?.Dispose();
+        isbnValidationDebounceTimer?.Dispose();
+        adminBooksFilterDebounceTimer?.Dispose();
+        adminAccountsFilterDebounceTimer?.Dispose();
+    }
+
+    /// <summary>
+    /// Formats ISBN-13 for display with hyphens.
+    /// If ISBN already contains hyphens, returns as-is.
+    /// Otherwise formats as: 978-XX-XXXXXXX-X
+    /// </summary>
+    private string FormatIsbn(string? isbn)
+    {
+        if (string.IsNullOrWhiteSpace(isbn))
+            return string.Empty;
+
+        // If already contains hyphens, return as-is
+        if (isbn.Contains("-"))
+            return isbn;
+
+        // Remove any existing hyphens and format
+        var cleanIsbn = isbn.Replace("-", "").Replace(" ", "");
+        
+        if (cleanIsbn.Length == 13)
+        {
+            // Format as 978-XX-XXXXXXX-X
+            return $"{cleanIsbn.Substring(0, 3)}-{cleanIsbn.Substring(3, 2)}-{cleanIsbn.Substring(5, 7)}-{cleanIsbn.Substring(12, 1)}";
+        }
+
+        // If length is not 13, return as-is
+        return isbn;
+    }
+
+    private void ShowAddBookModal()
+    {
+        newBookModel = new CreateBookRequest { issueyear = DateTime.Now.Year };
+        addBookErrorMessage = null;
+        isbnValidationState = null;
+        showAddBookModal = true;
+    }
+
+    private void CloseAddBookModal()
+    {
+        showAddBookModal = false;
+        newBookModel = new CreateBookRequest { issueyear = DateTime.Now.Year };
+        addBookErrorMessage = null;
+        isbnValidationState = null;
+    }
+
+    private async Task LoadLoanHistory()
+    {
+        isLoadingLoanHistory = true;
+        loanHistoryErrorMessage = null;
+        try
+        {
+            if (currentUserId != null)
+            {
+                loanHistoryResponse = await LoanService.GetUserLoanHistoryAsync(currentUserId.Value, loanHistoryPage, loanHistoryPageSize);
+            }
+            else
+            {
+                loanHistoryErrorMessage = "Failed to get user information.";
+            }
+        }
+        catch (Exception ex)
+        {
+            loanHistoryErrorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            isLoadingLoanHistory = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GoToLoanHistoryPage(int page)
+    {
+        if (page < 1 || (loanHistoryResponse != null && page > loanHistoryResponse.TotalPages))
+            return;
+        loanHistoryPage = page;
+        await LoadLoanHistory();
+    }
+
+    private async Task LoadBorrowedBooks()
+    {
+        isLoadingBorrowedBooks = true;
+        borrowedBooksErrorMessage = null;
+
+        try
+        {
+            if (currentUserId != null)
+            {
+                borrowedBooks = await LoanService.GetUserBorrowedBooksAsync(currentUserId.Value);
+            }
+            else
+            {
+                borrowedBooksErrorMessage = "Failed to get user information.";
+            }
+        }
+        catch (Exception ex)
+        {
+            borrowedBooksErrorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            isLoadingBorrowedBooks = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseModalOnBackdrop(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        if (!isAddingBook)
+        {
+            CloseAddBookModal();
+        }
+    }
+
+    private void HandleIsbnInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? string.Empty;
+        
+        // Remove all non-digit characters
+        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
+        
+        // Limit to 13 digits
+        if (digitsOnly.Length > 13)
+        {
+            digitsOnly = digitsOnly.Substring(0, 13);
+        }
+        
+        // Format with hyphens: 978-XX-XXXXXXX-X (3-2-7-1)
+        if (digitsOnly.Length == 0)
+        {
+            newBookModel.isbn = string.Empty;
+            isbnValidationState = null;
+        }
+        else
+        {
+            var formatted = digitsOnly.Substring(0, Math.Min(3, digitsOnly.Length));
+            if (digitsOnly.Length > 3)
+            {
+                formatted += "-" + digitsOnly.Substring(3, Math.Min(2, digitsOnly.Length - 3));
+                if (digitsOnly.Length > 5)
+                {
+                    formatted += "-" + digitsOnly.Substring(5, Math.Min(7, digitsOnly.Length - 5));
+                    if (digitsOnly.Length > 12)
+                    {
+                        formatted += "-" + digitsOnly.Substring(12, 1);
+                    }
+                }
+            }
+            
+            newBookModel.isbn = formatted;
+            
+            // Reset validation state
+            isbnValidationState = null;
+            
+            // Validate via HTTP endpoint if we have 13 digits (with debouncing)
+            if (digitsOnly.Length == 13)
+            {
+                // Debounce validation calls
+                isbnValidationDebounceTimer?.Dispose();
+                isbnValidationDebounceTimer = new System.Threading.Timer(async _ =>
+                {
+                    await InvokeAsync(() =>
+                    {
+                        ValidateIsbnViaHttp(digitsOnly);
+                        StateHasChanged();
+                        return Task.CompletedTask;
+                    });
+                }, null, 300, Timeout.Infinite); // 300ms debounce
+            }
+        }
+        
+        StateHasChanged();
+    }
+
+    private Task ValidateIsbnViaHttp(string digitsOnly)
+    {
+        try
+        {
+            var isValid = IsbnValidationService.ValidateIsbn13(digitsOnly);
+            isbnValidationState = isValid;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error validating ISBN: {ex.Message}");
+            isbnValidationState = null;
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleAddBookSubmit()
+    {
+        isAddingBook = true;
+        addBookErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            // Additional validation for IssueYear (must be <= current year)
+            if (newBookModel.issueyear > DateTime.Now.Year)
+            {
+                addBookErrorMessage = $"Issue Year must be less than or equal to {DateTime.Now.Year}";
+                isAddingBook = false;
+                StateHasChanged();
+                return;
+            }
+
+            // Call service directly - this works in Blazor Server
+            var result = await CatalogService.CreateBookAsync(newBookModel);
+            
+            // Success - close modal and refresh list
+            CloseAddBookModal();
+            await LoadBooks();
+        }
+        catch (Exception ex)
+        {
+            addBookErrorMessage = $"An error occurred while adding the book: {ex.Message}";
+        }
+        finally
+        {
+            isAddingBook = false;
+            StateHasChanged();
+        }
+    }
+}
+
+@implements IDisposable
+
+

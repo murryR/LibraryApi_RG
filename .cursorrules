@@ -1,0 +1,68 @@
+Tech Stack & Environment
+
+- .NET 10 for all backend code (ASP.NET Core).
+- Frontend: Blazor Server (prefer Server unless WebAssembly is specified).
+- Database: SQLite. Use appsettings.Development.json for local connection (e.g. Data Source=app.db).
+- Hosting: Azure App Service (Web App). Use Azure SDKs for configuration and secrets where needed.
+- Local dev: Run with dotnet run from the solution or Web project directory.
+
+Architecture
+
+- Clean Architecture: Core/Domain, Application, Infrastructure, Presentation.
+- Domain: Entities, value objects, interfaces only. No external dependencies.
+- Application: Services/use cases, DTOs, repository interfaces (e.g. IBookCatalogRepository, IUserRepository). Optional MediatR for CQRS. Depends only on Domain—no Microsoft.EntityFrameworkCore, DbSet<>, or EF extension methods; persistence is behind interfaces implemented in Infrastructure.
+- Infrastructure: EF Core DbContext, repositories, migrations. Implements Application interfaces.
+- Presentation: Blazor components/pages and API controllers. Depends on Application.
+
+- Register all services in Program.cs via builder.Services.
+- All I/O (DB, HTTP) must be async.
+
+Best Practices
+
+- Security: HTTPS in production. Validate all inputs (FluentValidation). Secrets in Azure Key Vault or User Secrets locally. Auth: Cookie + API Key (or Azure AD B2C / JWT if required).
+- Logging: Serilog with structured logs to file and console.
+- Error handling: Global exception handler; log exceptions with Serilog (and Azure App Insights in production).
+- Performance: Paginate API responses; use IAsyncEnumerable for large sets; consider IMemoryCache where appropriate.
+- Testing: xUnit for unit tests; aim for 80%+ coverage; use TestServer/InMemory DB for integration tests when needed.
+- Code style: C# 12 (primary constructors, etc.). Nullable reference types enabled. PascalCase for public members.
+- Configuration: IConfiguration for connection strings (e.g. DefaultConnection) and environment-specific settings.
+- Blazor: Prefer @inject or cascading parameters; use a dedicated state service or Fluxor if needed; avoid direct DOM manipulation.
+- SOLID & Clean Code: See the "SOLID Principles" and "Clean Code" sections below; apply them in every change (new and existing code).
+
+
+SOLID Principles
+
+- Single Responsibility (SRP): One class/component = one reason to change. Keep Blazor pages/components small: split any page over ~300 lines into child components (e.g. modals, tabs, list views). Services should do one bounded concern (e.g. CatalogService = catalog only; LoanService = loans only).
+- Open/Closed (OCP): Prefer extending via new types (new services, validators, strategies) over editing existing ones. Use interfaces and DI for pluggable behavior; avoid long if/else or switch for “add new case” scenarios—consider strategy or registry patterns.
+- Liskov Substitution (LSP): Implementations must be substitutable for their interfaces without breaking callers. No throwing from methods that the interface does not advertise; preserve contracts (preconditions/postconditions).
+- Interface Segregation (ISP): Small, focused interfaces. Clients must not depend on methods they do not use. Split large interfaces into role-specific ones if needed.
+- Dependency Inversion (DIP): Depend on abstractions (interfaces), not concretions. Application layer must not reference Microsoft.EntityFrameworkCore or use DbSet<>; define repository interfaces (e.g. IUserRepository, IStatusRepository) in Application and implement them in Infrastructure. IAppDbContext in Application should not expose EF-specific types if Application is to stay persistence-ignorant.
+
+Clean Code
+
+- Naming: Clear, intention-revealing names. PascalCase for public members; camelCase for locals/parameters. Avoid abbreviations except well-known ones (e.g. Id, Dto).
+- Functions: Small; do one thing. Prefer many short methods over few long ones. Extract when a method grows beyond ~20–30 lines or handles multiple concerns.
+- DRY: No duplicated logic. Extract shared behavior into helpers, services, or base types. Repeated validation/auth checks → filters, policies, or extension methods.
+- Comments: Prefer self-explanatory code. Comment “why” when non-obvious; avoid restating “what” the code does.
+- Complexity: Keep cyclomatic complexity low. Extract conditions into named methods or validators. Program.cs and startup logic: move into extension methods (e.g. AddLibraryApiAuthentication(), UseLibraryApiMiddleware()) so Program.cs stays a thin composition root.
+- Blazor: No monolithic pages. One main responsibility per page/component; reuse via child components and injected services. Keep @code blocks manageable (target < ~200 lines per component).
+- Tests: Write testable code via interfaces and DI; avoid static/global state in business logic.
+
+Development Workflow
+
+- Do not implement in one big step. First create a short TODO list (steps, files to add/change, dependencies). Get confirmation on the TODO, then implement step by step and present each step for review before continuing.
+- When adding features, check that new types respect SRP and DIP; refactor existing files that grow too large (e.g. split Index.razor into components) as part of the same task or a follow-up TODO.
+
+Project Structure
+
+LibraryApi/
+├── LibraryApi.Domain/
+├── LibraryApi.Application/
+├── LibraryApi.Infrastructure/
+├── LibraryApi.Web/          (Blazor Server + API)
+├── LibraryApi.UnitTests/
+├── docs/
+├── scripts/
+├── .cursorrules
+├── LibraryApi.sln
+└── README.md
