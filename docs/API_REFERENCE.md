@@ -109,7 +109,7 @@ Create a new book in the library catalog.
 **Request Fields:**
 - `name` (string, required): Book title (max 300 characters)
 - `author` (string, required): Author name (max 200 characters)
-- `issueyear` (integer, required): Publication year (between 1000 and 2100)
+- `issueyear` (integer, required): Publication year (between 1000 and the current year)
 - `isbn` (string, required): ISBN-13 identifier (max 50 characters, must be valid ISBN-13)
 - `numberOfPieces` (integer, required): Number of copies available (must be >= 0)
 
@@ -148,7 +148,7 @@ curl -X POST "https://your-domain.com/api/catalog-api" \
 **Validation Rules:**
 - ISBN must be valid ISBN-13 format (with or without hyphens)
 - Name + Author + ISBN combination must be unique
-- Issue year must be between 1000 and 2100
+- Issue year must be between 1000 and the current year
 - Number of pieces must be >= 0
 
 ---

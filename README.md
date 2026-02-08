@@ -21,7 +21,7 @@ The app runs at `https://localhost:7xxx` or `http://localhost:5xxx` (see console
 
 - **Blazor Server** – Book list, filters (name, author, ISBN), add book, borrow/return, “My borrowed books”.
 - **REST API** – Catalog: `GET/POST /api/catalog`, `POST /api/catalog/{id}/borrow`, `POST /api/catalog/{id}/return`. Cookie auth for the web UI; API key (`X-API-Key`) for external systems at `/api/catalog-api`.
-- **Health** – `GET /Health` returns `{ "status": "Healthy", "database": "Ok" }`.
+- **Health** – `GET /Health` returns `{ "status": "Healthy", "database": "Ok", "timestamp": "..." }`.
 - **SQLite** – Database in `app.db` (path from connection string).
 - **Documentation** – [docs/](docs/) (architecture, API, UI, Azure deployment).
 
@@ -40,6 +40,10 @@ The app runs at `https://localhost:7xxx` or `http://localhost:5xxx` (see console
 - Data: SQLite  
 - UI (Blazor) + API for external systems  
 - Production-quality code, validation, tests, security (Cookie + API Key), loan history (“My borrowed books”)
+
+## AI / Tools Used
+
+This project was developed with **Cursor** (AI-assisted editing). AI was used for implementation scaffolding, tests, documentation, and refactoring. Architecture decisions, layer boundaries, and .cursorrules were defined by the developer; AI assisted with boilerplate, naming consistency, and documentation text.
 
 ## Notes
 

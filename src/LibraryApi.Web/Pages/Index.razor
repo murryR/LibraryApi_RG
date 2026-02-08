@@ -10,6 +10,7 @@
 @using LibraryApi.Application.Catalog.Dtos
 @using LibraryApi.Application.Catalog.Services
 @using LibraryApi.Application.Common.Dtos
+@using LibraryApi.Web.Pages.Shared
 @using System.Text.Json
 @attribute [Authorize]
 
@@ -744,103 +745,11 @@ else if (booksResponse?.Items != null && booksResponse.Items.Count == 0)
     </div>
 }
 
-<!-- Add Book Modal -->
-@if (showAddBookModal)
-{
-    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseModalOnBackdrop">
-        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
-            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-                <div class="modal-header border-0 py-4" style="background: #f8fafc;">
-                    <h5 class="modal-title fw-semibold">Add New Book</h5>
-                    <button type="button" class="btn-close" @onclick="CloseAddBookModal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-4">
-                    <EditForm Model="@newBookModel" OnValidSubmit="HandleAddBookSubmit">
-                        <DataAnnotationsValidator />
-                        <ValidationSummary class="text-danger" />
-                        
-                        @if (!string.IsNullOrEmpty(addBookErrorMessage))
-                        {
-                            <div class="alert alert-danger" role="alert">
-                                @addBookErrorMessage
-                            </div>
-                        }
-
-                        <div class="mb-3">
-                            <label for="bookName" class="form-label">Name <span class="text-danger">*</span></label>
-                            <InputText id="bookName" class="form-control rounded-3" @bind-Value="newBookModel.name" placeholder="Enter book name" />
-                            <ValidationMessage For="@(() => newBookModel.name)" />
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="bookAuthor" class="form-label">Author <span class="text-danger">*</span></label>
-                            <InputText id="bookAuthor" class="form-control rounded-3" @bind-Value="newBookModel.author" placeholder="Enter author name" />
-                            <ValidationMessage For="@(() => newBookModel.author)" />
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="bookIssueYear" class="form-label">Issue Year <span class="text-danger">*</span></label>
-                            <InputNumber id="bookIssueYear" class="form-control rounded-3" @bind-Value="newBookModel.issueyear" placeholder="Enter issue year" />
-                            <ValidationMessage For="@(() => newBookModel.issueyear)" />
-                            <small class="form-text text-muted">Year must be between 1000 and @DateTime.Now.Year</small>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="bookIsbn" class="form-label">ISBN <span class="text-danger">*</span></label>
-                            <div class="position-relative">
-                                <input type="text" 
-                                       id="bookIsbn" 
-                                       class="form-control rounded-3 @(isbnValidationState == true ? "is-valid" : (isbnValidationState == false ? "is-invalid" : ""))" 
-                                       value="@newBookModel.isbn" 
-                                       @oninput="HandleIsbnInput" 
-                                       placeholder="978-XX-XXXXXXX-X"
-                                       maxlength="16" />
-                                @if (isbnValidationState.HasValue && !string.IsNullOrWhiteSpace(newBookModel.isbn))
-                                {
-                                    <span class="position-absolute top-50 end-0 translate-middle-y pe-3">
-                                        @if (isbnValidationState.Value)
-                                        {
-                                            <i class="bi bi-check-circle-fill text-success" style="font-size: 1.2rem;"></i>
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-x-circle-fill text-danger" style="font-size: 1.2rem;"></i>
-                                        }
-                                    </span>
-                                }
-                            </div>
-                            <ValidationMessage For="@(() => newBookModel.isbn)" />
-                            <small class="form-text text-muted">Format: ISBN-13 (13 digits)</small>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="bookNumberOfPieces" class="form-label">Number of Pieces <span class="text-danger">*</span></label>
-                            <InputNumber id="bookNumberOfPieces" class="form-control rounded-3" @bind-Value="newBookModel.numberOfPieces" placeholder="Enter number of pieces" min="0" />
-                            <ValidationMessage For="@(() => newBookModel.numberOfPieces)" />
-                            <small class="form-text text-muted">Number of physical copies available</small>
-                        </div>
-
-                        <div class="modal-footer border-0 pt-4">
-                            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" @onclick="CloseAddBookModal" disabled="@isAddingBook">Cancel</button>
-                            <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm" disabled="@isAddingBook">
-                                @if (isAddingBook)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                }
-                                Add Book
-                            </button>
-                        </div>
-                    </EditForm>
-                </div>
-            </div>
-        </div>
-    </div>
-}
+<AddBookModal Visible="@showAddBookModal" OnClose="CloseAddBookModal" OnBookAdded="RefreshBooksAfterAdd" />
 
 @inject ICatalogService CatalogService
 @inject ILoanService LoanService
 @inject IAdminService AdminService
-@inject IIsbnValidationService IsbnValidationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
 
@@ -891,15 +800,7 @@ else if (booksResponse?.Items != null && booksResponse.Items.Count == 0)
     
     private System.Threading.Timer? filterDebounceTimer;
 
-    // Add Book Modal State
     private bool showAddBookModal = false;
-    private bool isAddingBook = false;
-    private string? addBookErrorMessage;
-    private CreateBookRequest newBookModel = new();
-    private bool? isbnValidationState = null; // null = not validated yet, true = valid, false = invalid
-    
-    // Debounce timer for ISBN validation
-    private System.Threading.Timer? isbnValidationDebounceTimer;
 
     // Borrow/Return State
     private Dictionary<string, BorrowStatusDto> bookBorrowStatuses = new();
@@ -1508,7 +1409,6 @@ else if (booksResponse?.Items != null && booksResponse.Items.Count == 0)
     public void Dispose()
     {
         filterDebounceTimer?.Dispose();
-        isbnValidationDebounceTimer?.Dispose();
         adminBooksFilterDebounceTimer?.Dispose();
         adminAccountsFilterDebounceTimer?.Dispose();
     }
@@ -1542,18 +1442,17 @@ else if (booksResponse?.Items != null && booksResponse.Items.Count == 0)
 
     private void ShowAddBookModal()
     {
-        newBookModel = new CreateBookRequest { issueyear = DateTime.Now.Year };
-        addBookErrorMessage = null;
-        isbnValidationState = null;
         showAddBookModal = true;
     }
 
     private void CloseAddBookModal()
     {
         showAddBookModal = false;
-        newBookModel = new CreateBookRequest { issueyear = DateTime.Now.Year };
-        addBookErrorMessage = null;
-        isbnValidationState = null;
+    }
+
+    private async Task RefreshBooksAfterAdd()
+    {
+        await LoadBooks();
     }
 
     private async Task LoadLoanHistory()
@@ -1617,123 +1516,6 @@ else if (booksResponse?.Items != null && booksResponse.Items.Count == 0)
         }
     }
 
-    private void CloseModalOnBackdrop(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
-    {
-        if (!isAddingBook)
-        {
-            CloseAddBookModal();
-        }
-    }
-
-    private void HandleIsbnInput(ChangeEventArgs e)
-    {
-        var input = e.Value?.ToString() ?? string.Empty;
-        
-        // Remove all non-digit characters
-        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
-        
-        // Limit to 13 digits
-        if (digitsOnly.Length > 13)
-        {
-            digitsOnly = digitsOnly.Substring(0, 13);
-        }
-        
-        // Format with hyphens: 978-XX-XXXXXXX-X (3-2-7-1)
-        if (digitsOnly.Length == 0)
-        {
-            newBookModel.isbn = string.Empty;
-            isbnValidationState = null;
-        }
-        else
-        {
-            var formatted = digitsOnly.Substring(0, Math.Min(3, digitsOnly.Length));
-            if (digitsOnly.Length > 3)
-            {
-                formatted += "-" + digitsOnly.Substring(3, Math.Min(2, digitsOnly.Length - 3));
-                if (digitsOnly.Length > 5)
-                {
-                    formatted += "-" + digitsOnly.Substring(5, Math.Min(7, digitsOnly.Length - 5));
-                    if (digitsOnly.Length > 12)
-                    {
-                        formatted += "-" + digitsOnly.Substring(12, 1);
-                    }
-                }
-            }
-            
-            newBookModel.isbn = formatted;
-            
-            // Reset validation state
-            isbnValidationState = null;
-            
-            // Validate via HTTP endpoint if we have 13 digits (with debouncing)
-            if (digitsOnly.Length == 13)
-            {
-                // Debounce validation calls
-                isbnValidationDebounceTimer?.Dispose();
-                isbnValidationDebounceTimer = new System.Threading.Timer(async _ =>
-                {
-                    await InvokeAsync(() =>
-                    {
-                        ValidateIsbnViaHttp(digitsOnly);
-                        StateHasChanged();
-                        return Task.CompletedTask;
-                    });
-                }, null, 300, Timeout.Infinite); // 300ms debounce
-            }
-        }
-        
-        StateHasChanged();
-    }
-
-    private Task ValidateIsbnViaHttp(string digitsOnly)
-    {
-        try
-        {
-            var isValid = IsbnValidationService.ValidateIsbn13(digitsOnly);
-            isbnValidationState = isValid;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error validating ISBN: {ex.Message}");
-            isbnValidationState = null;
-        }
-        return Task.CompletedTask;
-    }
-
-    private async Task HandleAddBookSubmit()
-    {
-        isAddingBook = true;
-        addBookErrorMessage = null;
-        StateHasChanged();
-
-        try
-        {
-            // Additional validation for IssueYear (must be <= current year)
-            if (newBookModel.issueyear > DateTime.Now.Year)
-            {
-                addBookErrorMessage = $"Issue Year must be less than or equal to {DateTime.Now.Year}";
-                isAddingBook = false;
-                StateHasChanged();
-                return;
-            }
-
-            // Call service directly - this works in Blazor Server
-            var result = await CatalogService.CreateBookAsync(newBookModel);
-            
-            // Success - close modal and refresh list
-            CloseAddBookModal();
-            await LoadBooks();
-        }
-        catch (Exception ex)
-        {
-            addBookErrorMessage = $"An error occurred while adding the book: {ex.Message}";
-        }
-        finally
-        {
-            isAddingBook = false;
-            StateHasChanged();
-        }
-    }
 }
 
 @implements IDisposable

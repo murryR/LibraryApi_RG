@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace LibraryApi.UnitTests.Services;
 
-public class BookLoanServiceTests
+public class LoanServiceTests
 {
     private readonly AppDbContext _dbContext;
     private readonly IBookCatalogRepository _catalogRepository;
@@ -16,7 +16,7 @@ public class BookLoanServiceTests
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<LoanService> _logger;
 
-    public BookLoanServiceTests()
+    public LoanServiceTests()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: $"TestDb_{Guid.NewGuid()}")

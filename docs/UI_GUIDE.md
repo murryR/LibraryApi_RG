@@ -304,9 +304,9 @@ All fields are validated before submission:
 
 ### Search Tips
 
-1. **Use autocomplete**: Type at least 4 characters to see suggestions - this helps you find books faster
-2. **Combine filters**: Use multiple filters together for precise searches
-3. **Clear filters**: Remove all filters to see the complete book catalog
+1. **Use the search field**: Type in the "Search books" field to find books by name, author, or ISBN (case-insensitive, partial match)
+2. **Combine terms**: Use comma-separated terms for precise searches (e.g. `rowling, harry potter`)
+3. **Clear filters**: Remove all text in the search field to see the complete book catalog
 
 ### Borrowing Tips
 
@@ -330,7 +330,6 @@ All fields are validated before submission:
 
 ## Keyboard Shortcuts
 
-- **Escape (Esc)**: Close autocomplete suggestions when typing in filter fields
 - **Tab**: Navigate between form fields
 - **Enter**: Submit forms (login, add book)
 
@@ -391,7 +390,6 @@ To log out of the system:
 ✅ **Track Loans**: View all your currently borrowed books  
 ✅ **Add Books**: Add new books to the library catalog  
 ✅ **Real-time Updates**: See availability changes immediately  
-✅ **Autocomplete**: Quick search with suggestions  
 ✅ **Pagination**: Navigate through large catalogs efficiently  
 
 ---

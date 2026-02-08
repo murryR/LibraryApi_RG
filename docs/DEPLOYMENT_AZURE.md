@@ -88,10 +88,12 @@ You can set up continuous deployment via GitHub Actions by:
    - Check: `/home/site/data/app.db` exists
 
 3. **Test the API Endpoint**:
+   - `GET /api/status/first` requires **cookie authentication** (logged-in session). Use a browser while logged in, or a cookie-aware client; plain `curl` will get 401 Unauthorized.
+   - For an unauthenticated check, use the health endpoint instead:
    ```bash
-   curl https://<YourAppServiceName>.azurewebsites.net/api/status/first
+   curl https://<YourAppServiceName>.azurewebsites.net/Health
    ```
-   Expected response: `"OK"`
+   Expected response: `{ "status": "Healthy", "database": "Ok", "timestamp": "..." }`
 
 4. **Test the Blazor UI**:
    - Navigate to: `https://<YourAppServiceName>.azurewebsites.net`

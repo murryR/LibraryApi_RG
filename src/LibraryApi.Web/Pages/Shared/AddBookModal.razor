@@ -1,0 +1,226 @@
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Forms
+@using LibraryApi.Application.Catalog
+@using LibraryApi.Application.Catalog.Dtos
+@using LibraryApi.Application.Catalog.Services
+
+@if (Visible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseModalOnBackdrop">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                <div class="modal-header border-0 py-4" style="background: #f8fafc;">
+                    <h5 class="modal-title fw-semibold">Add New Book</h5>
+                    <button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-4">
+                    <EditForm Model="@_model" OnValidSubmit="HandleSubmit">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        @if (!string.IsNullOrEmpty(_errorMessage))
+                        {
+                            <div class="alert alert-danger" role="alert">
+                                @_errorMessage
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label for="bookName" class="form-label">Name <span class="text-danger">*</span></label>
+                            <InputText id="bookName" class="form-control rounded-3" @bind-Value="_model.name" placeholder="Enter book name" />
+                            <ValidationMessage For="@(() => _model.name)" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="bookAuthor" class="form-label">Author <span class="text-danger">*</span></label>
+                            <InputText id="bookAuthor" class="form-control rounded-3" @bind-Value="_model.author" placeholder="Enter author name" />
+                            <ValidationMessage For="@(() => _model.author)" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="bookIssueYear" class="form-label">Issue Year <span class="text-danger">*</span></label>
+                            <InputNumber id="bookIssueYear" class="form-control rounded-3" @bind-Value="_model.issueyear" placeholder="Enter issue year" />
+                            <ValidationMessage For="@(() => _model.issueyear)" />
+                            <small class="form-text text-muted">Year must be between 1000 and @DateTime.Now.Year</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="bookIsbn" class="form-label">ISBN <span class="text-danger">*</span></label>
+                            <div class="position-relative">
+                                <input type="text"
+                                       id="bookIsbn"
+                                       class="form-control rounded-3 @(_isbnValid == true ? "is-valid" : (_isbnValid == false ? "is-invalid" : ""))"
+                                       value="@_model.isbn"
+                                       @oninput="HandleIsbnInput"
+                                       placeholder="978-XX-XXXXXXX-X"
+                                       maxlength="16" />
+                                @if (_isbnValid.HasValue && !string.IsNullOrWhiteSpace(_model.isbn))
+                                {
+                                    <span class="position-absolute top-50 end-0 translate-middle-y pe-3">
+                                        @if (_isbnValid.Value)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success" style="font-size: 1.2rem;"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-x-circle-fill text-danger" style="font-size: 1.2rem;"></i>
+                                        }
+                                    </span>
+                                }
+                            </div>
+                            <ValidationMessage For="@(() => _model.isbn)" />
+                            <small class="form-text text-muted">Format: ISBN-13 (13 digits)</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="bookNumberOfPieces" class="form-label">Number of Pieces <span class="text-danger">*</span></label>
+                            <InputNumber id="bookNumberOfPieces" class="form-control rounded-3" @bind-Value="_model.numberOfPieces" placeholder="Enter number of pieces" min="0" />
+                            <ValidationMessage For="@(() => _model.numberOfPieces)" />
+                            <small class="form-text text-muted">Number of physical copies available</small>
+                        </div>
+
+                        <div class="modal-footer border-0 pt-4">
+                            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" @onclick="Close" disabled="@_isAdding">Cancel</button>
+                            <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm" disabled="@_isAdding">
+                                @if (_isAdding)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                }
+                                Add Book
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnBookAdded { get; set; }
+
+    [Inject] private ICatalogService CatalogService { get; set; } = null!;
+    [Inject] private IIsbnValidationService IsbnValidationService { get; set; } = null!;
+
+    private CreateBookRequest _model = new();
+    private bool _isAdding;
+    private string? _errorMessage;
+    private bool? _isbnValid;
+    private System.Threading.Timer? _isbnDebounceTimer;
+
+    protected override void OnParametersSet()
+    {
+        if (Visible)
+        {
+            _model = new CreateBookRequest { issueyear = DateTime.Now.Year };
+            _errorMessage = null;
+            _isbnValid = null;
+        }
+    }
+
+    private async Task Close()
+    {
+        _model = new CreateBookRequest { issueyear = DateTime.Now.Year };
+        _errorMessage = null;
+        _isbnValid = null;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task CloseModalOnBackdrop(MouseEventArgs _)
+    {
+        if (!_isAdding)
+            await Close();
+    }
+
+    private void HandleIsbnInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? string.Empty;
+        var digitsOnly = new string(input.Where(char.IsDigit).ToArray());
+        if (digitsOnly.Length > 13)
+            digitsOnly = digitsOnly.Substring(0, 13);
+
+        if (digitsOnly.Length == 0)
+        {
+            _model.isbn = string.Empty;
+            _isbnValid = null;
+        }
+        else
+        {
+            var formatted = digitsOnly.Substring(0, Math.Min(3, digitsOnly.Length));
+            if (digitsOnly.Length > 3)
+            {
+                formatted += "-" + digitsOnly.Substring(3, Math.Min(2, digitsOnly.Length - 3));
+                if (digitsOnly.Length > 5)
+                {
+                    formatted += "-" + digitsOnly.Substring(5, Math.Min(7, digitsOnly.Length - 5));
+                    if (digitsOnly.Length > 12)
+                        formatted += "-" + digitsOnly.Substring(12, 1);
+                }
+            }
+            _model.isbn = formatted;
+            _isbnValid = null;
+
+            if (digitsOnly.Length == 13)
+            {
+                _isbnDebounceTimer?.Dispose();
+                _isbnDebounceTimer = new System.Threading.Timer(async _ =>
+                {
+                    await InvokeAsync(() =>
+                    {
+                        try
+                        {
+                            _isbnValid = IsbnValidationService.ValidateIsbn13(digitsOnly);
+                        }
+                        catch
+                        {
+                            _isbnValid = null;
+                        }
+                        StateHasChanged();
+                        return Task.CompletedTask;
+                    });
+                }, null, 300, Timeout.Infinite);
+            }
+        }
+        StateHasChanged();
+    }
+
+    private async Task HandleSubmit()
+    {
+        _isAdding = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            if (_model.issueyear > DateTime.Now.Year)
+            {
+                _errorMessage = $"Issue Year must be less than or equal to {DateTime.Now.Year}";
+                _isAdding = false;
+                StateHasChanged();
+                return;
+            }
+
+            await CatalogService.CreateBookAsync(_model);
+            await Close();
+            await OnBookAdded.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"An error occurred while adding the book: {ex.Message}";
+        }
+        finally
+        {
+            _isAdding = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        _isbnDebounceTimer?.Dispose();
+    }
+}
+
+@implements IDisposable

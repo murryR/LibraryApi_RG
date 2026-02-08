@@ -117,7 +117,7 @@ LibraryApi/
 â”‚
 â”śâ”€â”€ LibraryApi.Application/          # Application Layer
 â”‚   â”śâ”€â”€ Auth/                       # Authentication services
-â”‚   â”śâ”€â”€ Books/                      # Book management services
+â”‚   â”śâ”€â”€ Catalog/                    # Book management services
 â”‚   â”‚   â”śâ”€â”€ Dtos/                   # Data Transfer Objects
 â”‚   â”‚   â”śâ”€â”€ Services/               # Helper services
 â”‚   â”‚   â””â”€â”€ Validators/             # FluentValidation validators
@@ -147,9 +147,8 @@ LibraryApi/
 â”‚   â””â”€â”€ Program.cs                  # Application startup
 â”‚
 â””â”€â”€ LibraryApi.UnitTests/           # Unit Tests
-    â”śâ”€â”€ Auth/
-    â”śâ”€â”€ Books/
-    â””â”€â”€ Status/
+    ├── Services/                    # AuthService, CatalogService, LoanService, etc.
+    └── Validators/                  # AddBookRequest, BorrowBook, ReturnBook validators
 ```
 
 ---
@@ -161,11 +160,7 @@ The Domain layer contains the core business entities and value objects with no d
 ### Entities
 
 #### Book
-Represents a book in the library catalog.
-
-```12:12:LibraryApi.Domain/Entities/Book.cs
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-```
+Represents a book in the library catalog. See `LibraryApi.Domain/Entities/Book.cs`.
 
 **Properties:**
 - `Id` (string, GUID): Unique identifier
@@ -240,12 +235,12 @@ The Application layer contains business logic, services, DTOs, and validators. I
 
 ### Services
 
-#### IBookService / BookService
+#### ICatalogService / CatalogService
 Manages book-related operations.
 
 **Key Methods:**
-- `GetAllBooksAsync`: Retrieves paginated books with optional filters (Name, Author, ISBN)
-- `AddBookAsync`: Creates a new book with uniqueness validation
+- `ListBooksAsync`: Retrieves paginated books with optional filters (Name, Author, ISBN)
+- `CreateBookAsync`: Creates a new book with uniqueness validation
 - `GetBookNameSuggestionsAsync`: Returns autocomplete suggestions for book names
 - `GetAuthorSuggestionsAsync`: Returns autocomplete suggestions for author names
 
@@ -255,14 +250,14 @@ Manages book-related operations.
 - Filters out invalid records (empty Id, Name, Author, or ISBN)
 - Uniqueness check: Name + Author + ISBN combination must be unique
 
-#### IBookLoanService / BookLoanService
+#### ILoanService / LoanService
 Manages book loan operations.
 
 **Key Methods:**
 - `BorrowBookAsync`: Creates a new loan if copies are available
 - `ReturnBookAsync`: Marks the oldest active loan as returned
-- `GetBookBorrowStatusAsync`: Gets availability and user loan status for a book
-- `GetBooksBorrowStatusAsync`: Batch operation for multiple books
+- `GetBorrowStatusAsync`: Gets availability and user loan status for a book
+- `GetBorrowStatusBatchAsync`: Batch operation for multiple books
 - `GetUserBorrowedBooksAsync`: Retrieves all active loans for a user
 
 **Business Logic:**
@@ -283,19 +278,19 @@ Handles authentication and user validation.
 
 DTOs use lowercase property names to match JSON conventions:
 
-- `AddBookRequestDto`: Book creation request
-- `BookResponseDto`: Book response data
+- `CreateBookRequest` (AddBookRequestDto.cs): Book creation request
+- `BookDto` (BookResponseDto.cs): Book response data
 - `GetAllBooksRequestDto`: Pagination and filter parameters
 - `PaginatedResponseDto<T>`: Generic paginated response wrapper
 - `BorrowBookResponseDto`: Loan creation response
-- `BookBorrowStatusDto`: Availability and loan status information
+- `BorrowStatusDto` (BookBorrowStatusDto.cs): Availability and loan status information
 - `BorrowedBookDto`: User's borrowed books list
 
 ### Validators
 
 FluentValidation validators ensure data integrity:
 
-- `AddBookRequestDtoValidator`: Validates book creation (ISBN-13, required fields, year range)
+- `CreateBookRequestValidator`: Validates book creation (ISBN-13, required fields, year range 1000–current year)
 - `BorrowBookRequestDtoValidator`: Validates borrow requests
 - `ReturnBookRequestDtoValidator`: Validates return requests
 
@@ -313,8 +308,8 @@ The Infrastructure layer handles data persistence and external integrations.
 
 ### AppDbContext
 
-```8:24:LibraryApi.Infrastructure/Persistence/AppDbContext.cs
-public class AppDbContext : DbContext, IAppDbContext
+```LibraryApi.Infrastructure/Persistence/AppDbContext.cs
+public class AppDbContext : DbContext, IUnitOfWork
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
@@ -334,7 +329,7 @@ public class AppDbContext : DbContext, IAppDbContext
 ```
 
 **Features:**
-- Implements `IAppDbContext` interface for abstraction
+- Implements `IUnitOfWork` interface for abstraction
 - Uses EF Core configurations from `Configurations/` folder
 - Applies all configurations automatically via assembly scanning
 
@@ -358,7 +353,7 @@ EF Core migrations are automatically applied on application startup:
 5. `AddBookLoanTable`: Creates BookLoans table
 
 **Migration Strategy:**
-- Migrations run automatically at startup via `Program.cs`
+- Migrations run automatically on startup via `ApplyMigrationsAndSeedAsync()` (MigrationExtensions)
 - Only pending migrations are applied
 - Logs all migration operations for audit
 
@@ -459,29 +454,7 @@ The application supports dual authentication mechanisms:
 
 ### Cookie Authentication (Web Users)
 
-**Configuration:**
-```268:293:LibraryApi.Web/Program.cs
-            .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
-            {
-                options.LoginPath = "/Login";
-                options.LogoutPath = "/Logout";
-                options.Cookie.HttpOnly = true;
-                // In production (Azure), always use Secure cookies (HTTPS only)
-                // In development, allow HTTP
-                options.Cookie.SecurePolicy = builder.Environment.IsProduction() 
-                    ? CookieSecurePolicy.Always 
-                    : CookieSecurePolicy.SameAsRequest;
-                // In Azure App Service behind a proxy/load balancer, we need SameSite=None with Secure
-                // Lax doesn't work for cross-site requests even when behind the same proxy
-                options.Cookie.SameSite = builder.Environment.IsProduction()
-                    ? SameSiteMode.None  // Required for Azure App Service behind proxy
-                    : SameSiteMode.Lax;
-                // Don't set domain - let browser handle it (works with any subdomain in Azure)
-                // Explicitly set path to root to ensure cookie is available everywhere
-                options.Cookie.Path = "/";
-                options.SlidingExpiration = true;
-                options.ExpireTimeSpan = TimeSpan.FromHours(8);
-```
+**Configuration:** See `LibraryApi.Web/Extensions/AuthenticationExtensions.cs` (Cookie and API Key schemes, 8-hour sliding expiration, SameSite and Secure policy for production).
 
 **Features:**
 - HttpOnly cookies for XSS protection
@@ -498,16 +471,7 @@ The application supports dual authentication mechanisms:
 
 ### API Key Authentication (Programmatic Access)
 
-**Configuration:**
-```352:358:LibraryApi.Web/Program.cs
-            .AddScheme<AuthenticationSchemeOptions, Authentication.ApiKeyAuthenticationHandler>(
-                "ApiKey", 
-                options => 
-                {
-                    // API Key scheme is only used when explicitly specified in [Authorize] attribute
-                    // It won't be auto-challenged because default challenge scheme is Cookie
-                });
-```
+**Configuration:** See `LibraryApi.Web/Extensions/AuthenticationExtensions.cs` (ApiKey scheme with `ApiKeyAuthenticationHandler`).
 
 **Usage:**
 - API Key passed via `X-API-Key` header
@@ -516,18 +480,7 @@ The application supports dual authentication mechanisms:
 
 ### Authorization Policies
 
-Default policy requires Cookie authentication:
-```362:369:LibraryApi.Web/Program.cs
-        builder.Services.AddAuthorization(options =>
-        {
-            // Default policy uses only Cookie authentication
-            // Endpoints that need API Key should explicitly specify it: [Authorize(AuthenticationSchemes = "ApiKey")]
-            options.DefaultPolicy = new AuthorizationPolicyBuilder(
-                    CookieAuthenticationDefaults.AuthenticationScheme)
-                .RequireAuthenticatedUser()
-                .Build();
-        });
-```
+Default policy requires Cookie authentication; configured in `LibraryApi.Web/Extensions/AuthenticationExtensions.cs`. Endpoints that need API Key use `[Authorize(AuthenticationSchemes = "ApiKey")]`.
 
 ---
 
@@ -587,7 +540,7 @@ CREATE TABLE Statuses (
 ```
 GET /api/catalog?pageNumber=1&pageSize=10&name=search&author=author&isbn=isbn
 Authorization: Cookie
-Response: PaginatedResponseDto<BookResponseDto>
+Response: PaginatedResponseDto<BookDto>
 ```
 
 #### Add New Book
@@ -601,7 +554,7 @@ Body: {
   "isbn": "978-0-123456-78-9",
   "numberOfPieces": 5
 }
-Response: BookResponseDto (201 Created)
+Response: BookDto (201 Created)
 ```
 
 #### Validate ISBN
@@ -645,7 +598,7 @@ Response: { "message": "Book returned successfully" } (200 OK)
 ```
 GET /api/catalog/{bookId}/borrow-status
 Authorization: Cookie
-Response: BookBorrowStatusDto
+Response: BorrowStatusDto
 ```
 
 #### Batch Borrow Status
@@ -653,7 +606,7 @@ Response: BookBorrowStatusDto
 POST /api/catalog/borrow-status/batch
 Authorization: Cookie
 Body: ["bookId1", "bookId2", ...]
-Response: Dictionary<string, BookBorrowStatusDto>
+Response: Dictionary<string, BorrowStatusDto>
 ```
 
 #### Get My Borrowed Books
@@ -704,11 +657,10 @@ Clears: Authentication cookie
    - Results paginated (default 10, max 100 per page)
    - Ordered by Name, then Author
 
-3. **Autocomplete:**
-   - User types at least 4 characters
-   - System queries database for matching names/authors
-   - Returns up to 20 distinct suggestions
-   - Sorted alphabetically
+3. **Autocomplete (API):**
+   - Cookie API exposes `GET /api/catalog/name-suggestions` and `GET /api/catalog/author-suggestions` with a minimum prefix of 4 characters
+   - Returns up to 20 distinct suggestions, sorted alphabetically
+   - The current Blazor UI uses a single combined search field (no dropdown suggestions)
 
 ### Book Loan Workflow
 
@@ -788,13 +740,7 @@ ConnectionStrings__DefaultConnection=Data Source=/home/site/data/app.db
 
 ### Data Protection
 
-**Configuration:**
-```253:256:LibraryApi.Web/Program.cs
-        builder.Services.AddDataProtection()
-            .PersistKeysToFileSystem(new DirectoryInfo(keysDirectory))
-            .SetApplicationName("LibraryApi")
-            .SetDefaultKeyLifetime(TimeSpan.FromDays(90));
-```
+**Configuration:** See `LibraryApi.Web/Extensions/DataProtectionExtensions.cs` (file system keys, 90-day lifetime).
 
 **Key Storage:**
 - Development: `keys/` directory
@@ -823,25 +769,7 @@ ConnectionStrings__DefaultConnection=Data Source=/home/site/data/app.db
 
 ### Serilog Configuration
 
-Structured logging with Serilog:
-
-```49:63:LibraryApi.Web/Program.cs
-        Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(builder.Configuration)
-            .Enrich.FromLogContext()
-            .WriteTo.Console()
-            .WriteTo.File(
-                path: logPath,
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 30,
-                flushToDiskInterval: TimeSpan.FromSeconds(1),
-                outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
-            .MinimumLevel.Information()
-            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-            .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Information)
-            .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
-            .CreateLogger();
-```
+Structured logging with Serilog; configured in `LibraryApi.Web/Extensions/LoggingExtensions.cs` (console + file, daily rotation, 30-day retention).
 
 ### Log Levels
 
@@ -870,9 +798,7 @@ Structured logging with Serilog:
 
 ### Global Exception Handler
 
-```484:484:LibraryApi.Web/Program.cs
-        app.UseExceptionHandler("/Error");
-```
+Configured in `LibraryApi.Web/Extensions/MiddlewareExtensions.cs` via `UseExceptionHandler("/Error")`.
 
 - Catches unhandled exceptions
 - Redirects to error page
@@ -880,98 +806,7 @@ Structured logging with Serilog:
 
 ### API Error Responses
 
-**Model Validation Errors:**
-```87:175:LibraryApi.Web/Program.cs
-            .ConfigureApiBehaviorOptions(options =>
-            {
-                // Customize the automatic 400 response for invalid model state
-                options.InvalidModelStateResponseFactory = context =>
-                {
-                    var loggerFactory = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>();
-                    var logger = loggerFactory.CreateLogger("ApiController.Validation");
-                    
-                    // CRITICAL: Check if response has already started - if so, we can't write to it
-                    if (context.HttpContext.Response.HasStarted)
-                    {
-                        logger.LogWarning("InvalidModelStateResponseFactory - Response already started, cannot write body");
-                        return new Microsoft.AspNetCore.Mvc.BadRequestResult();
-                    }
-                    
-                    var actionName = context.ActionDescriptor.DisplayName ?? "Unknown";
-                    var route = context.HttpContext.Request.Path + context.HttpContext.Request.QueryString;
-                    var method = context.HttpContext.Request.Method;
-                    
-                    logger.LogWarning(
-                        "=== InvalidModelStateResponseFactory TRIGGERED === Action: {Action}, Route: {Route}, Method: {Method}, Response.HasStarted: {HasStarted}, ModelState.ErrorCount: {ErrorCount}",
-                        actionName, route, method, context.HttpContext.Response.HasStarted, context.ModelState.ErrorCount);
-                    
-                    var errors = context.ModelState
-                        .Where(x => x.Value?.Errors.Count > 0)
-                        .SelectMany(x => x.Value!.Errors.Select(e => new
-                        {
-                            Property = x.Key,
-                            ErrorMessage = e.ErrorMessage,
-                            Exception = e.Exception?.Message,
-                            AttemptedValue = x.Value.AttemptedValue
-                        }))
-                        .ToList();
-                    
-                    if (errors.Any())
-                    {
-                        var errorDetails = errors.Select(e => 
-                            $"Property: '{e.Property}', Error: '{e.ErrorMessage}', AttemptedValue: '{e.AttemptedValue}', Exception: {e.Exception ?? "None"}")
-                            .ToList();
-                        
-                        logger.LogWarning(
-                            "InvalidModelStateResponseFactory - Errors ({Count}): {Errors}",
-                            errors.Count,
-                            string.Join(" | ", errorDetails));
-                        
-                        // Log all ModelState keys
-                        var allKeys = string.Join(", ", context.ModelState.Keys);
-                        logger.LogWarning("InvalidModelStateResponseFactory - All ModelState Keys: [{Keys}]", allKeys);
-                    }
-                    else
-                    {
-                        logger.LogWarning("InvalidModelStateResponseFactory - ModelState has errors but error list is empty. ErrorCount: {ErrorCount}",
-                            context.ModelState.ErrorCount);
-                    }
-                    
-                    logger.LogWarning(
-                        "ApiController automatic validation failed for {Action} - Route: {Route}, Errors: {Errors}",
-                        actionName,
-                        route,
-                        string.Join("; ", errors.Select(e => $"{e.Property}: {e.ErrorMessage}")));
-                    
-                    // Return detailed error response
-                    var problemDetails = new Microsoft.AspNetCore.Mvc.ProblemDetails
-                    {
-                        Status = 400,
-                        Title = "Validation Error",
-                        Detail = "One or more validation errors occurred.",
-                        Type = "https://tools.ietf.org/html/rfc7231#section-6.5.1"
-                    };
-                    
-                    var errorDict = new Dictionary<string, string[]>();
-                    foreach (var error in errors)
-                    {
-                        if (!errorDict.ContainsKey(error.Property))
-                        {
-                            errorDict[error.Property] = Array.Empty<string>();
-                        }
-                        var existingErrors = errorDict[error.Property].ToList();
-                        existingErrors.Add(error.ErrorMessage);
-                        errorDict[error.Property] = existingErrors.ToArray();
-                    }
-                    
-                    problemDetails.Extensions["errors"] = errorDict;
-                    
-                    // Ensure content type is set to JSON
-                    context.HttpContext.Response.ContentType = "application/json";
-                    
-                    return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(problemDetails);
-                };
-```
+**Model Validation Errors:** Configured in `Program.cs` via `AddControllers().ConfigureApiBehaviorOptions()`. Returns RFC 7807 Problem Details (JSON) with an `errors` dictionary for invalid model state.
 
 **Service-Level Errors:**
 - `KeyNotFoundException` â†’ 404 Not Found
@@ -980,36 +815,7 @@ Structured logging with Serilog:
 
 ### Status Code Pages
 
-```487:514:LibraryApi.Web/Program.cs
-        app.UseStatusCodePages(context =>
-        {
-            // Skip status code pages for API routes - let controllers handle JSON responses
-            if (context.HttpContext.Request.Path.StartsWithSegments("/api"))
-            {
-                // For API routes, do nothing - let the controller's JSON response pass through
-                return Task.CompletedTask;
-            }
-            
-            // Only write status code page for non-API routes if response hasn't been written yet
-            if (!context.HttpContext.Response.HasStarted)
-            {
-                context.HttpContext.Response.ContentType = "text/plain";
-                var statusCode = context.HttpContext.Response.StatusCode;
-                var statusDescription = statusCode switch
-                {
-                    400 => "Bad Request",
-                    401 => "Unauthorized",
-                    403 => "Forbidden",
-                    404 => "Not Found",
-                    500 => "Internal Server Error",
-                    _ => "Error"
-                };
-                return context.HttpContext.Response.WriteAsync($"Status Code: {statusCode}; {statusDescription}");
-            }
-            
-            return Task.CompletedTask;
-        });
-```
+Configured in `LibraryApi.Web/Extensions/MiddlewareExtensions.cs`: API routes are skipped (controllers return JSON); non-API routes get a plain-text status description.
 
 ---
 
@@ -1020,9 +826,8 @@ Structured logging with Serilog:
 Unit tests are located in `LibraryApi.UnitTests/`:
 
 **Test Structure:**
-- `Auth/`: Authentication service tests
-- `Books/`: Book and book loan service tests
-- `Status/`: Status service tests
+- `Services/`: AuthService, CatalogService, LoanService, StatusService, IsbnValidationService tests
+- `Validators/`: AddBookRequest, BorrowBook, ReturnBook validator tests
 
 **Test Frameworks:**
 - **xUnit**: Test framework
@@ -1055,7 +860,7 @@ dotnet test
 
 1. **Async/Await**: All I/O operations are asynchronous
 2. **Pagination**: Limits result sets to prevent memory issues
-3. **Batch Operations**: `GetBooksBorrowStatusAsync` for multiple books in one query
+3. **Batch Operations**: `GetBorrowStatusBatchAsync` for multiple books in one query
 4. **Database Indexes**: Unique constraints create indexes for fast lookups
 
 ### Security Considerations

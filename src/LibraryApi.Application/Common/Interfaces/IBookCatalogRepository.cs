@@ -13,4 +13,3 @@ public interface IBookCatalogRepository
     Task<List<Book>> GetByIdsAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken = default);
     Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default);
 }
-

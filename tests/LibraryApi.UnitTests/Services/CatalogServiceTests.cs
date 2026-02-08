@@ -9,14 +9,14 @@ using Microsoft.Extensions.Logging;
 
 namespace LibraryApi.UnitTests.Services;
 
-public class BookServiceTests
+public class CatalogServiceTests
 {
     private readonly AppDbContext _dbContext;
     private readonly IBookCatalogRepository _catalogRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<CatalogService> _logger;
 
-    public BookServiceTests()
+    public CatalogServiceTests()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: $"TestDb_{Guid.NewGuid()}")
